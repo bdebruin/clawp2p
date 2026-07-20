@@ -278,15 +278,15 @@
               <p>Pack/unpack <code>.claw</code> files. Ed25519 signing, canonical hashing, manifest validation, node policy enforcement, quarantine on rejection. Full security test suite — tamper detection, path traversal, zip bombs, wrong keys.</p>
             </div>
           </div>
-          <div class="roadmap-item active">
-            <span class="roadmap-marker">▶</span>
+          <div class="roadmap-item done">
+            <span class="roadmap-marker done-marker">✓</span>
             <div>
-              <strong>Single-node runtime — <code>node.py</code> + <code>sandbox.py</code></strong>
-              <p>HTTP API to receive a <code>.claw</code> bundle, verify it, run it in a Docker sandbox with hard resource limits and default-deny egress, then re-pack on exit.</p>
+              <strong>Single-node runtime — <code>node.py</code> + <code>sandbox.py</code> + <code>transport.py</code></strong>
+              <p>HTTP API (POST /bundle, GET /status, /policy, /agents). Docker sandbox: verify-before-execute, read-only skills mount, writable state only. Bundle transfer with retry and exponential backoff.</p>
             </div>
           </div>
-          <div class="roadmap-item">
-            <span class="roadmap-marker">○</span>
+          <div class="roadmap-item active">
+            <span class="roadmap-marker">▶</span>
             <div>
               <strong>Two-node migration + demo agent</strong>
               <p>Node A checkpoints, transfers to hardcoded Node B, Node B verifies and resumes. Demo agent counts, logs its hostname, hops every 5 steps.</p>
