@@ -564,6 +564,8 @@ section:last-of-type { border-bottom: none; }
 }
 
 .roadmap-item.active .roadmap-marker { color: var(--signal); }
+.roadmap-item.done .roadmap-marker { color: var(--verify); }
+.done-marker { font-size: 1rem; }
 
 .roadmap-item strong {
   font-family: var(--font-display);

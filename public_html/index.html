@@ -271,11 +271,25 @@
         <p class="section-sub">Early prototype. No running network. No token, no users, no funding. The honest pitch is stronger: here is a thing that does not exist yet, here is precisely how it would work, here is the code.</p>
 
         <div class="roadmap">
+          <div class="roadmap-item done">
+            <span class="roadmap-marker done-marker">✓</span>
+            <div>
+              <strong>Bundle format — <code>bundle.py</code> + <code>signing.py</code></strong>
+              <p>Pack/unpack <code>.claw</code> files. Ed25519 signing, canonical hashing, manifest validation, node policy enforcement, quarantine on rejection. Full security test suite — tamper detection, path traversal, zip bombs, wrong keys.</p>
+            </div>
+          </div>
           <div class="roadmap-item active">
             <span class="roadmap-marker">▶</span>
             <div>
-              <strong>MVP — two-node migration</strong>
-              <p>Pack/unpack the <code>.claw</code> format. Single-node runtime with Docker sandboxing and signature verification. Two-node migration with hardcoded discovery. Demo agent that counts, hops every 5 steps, and shows you it works.</p>
+              <strong>Single-node runtime — <code>node.py</code> + <code>sandbox.py</code></strong>
+              <p>HTTP API to receive a <code>.claw</code> bundle, verify it, run it in a Docker sandbox with hard resource limits and default-deny egress, then re-pack on exit.</p>
+            </div>
+          </div>
+          <div class="roadmap-item">
+            <span class="roadmap-marker">○</span>
+            <div>
+              <strong>Two-node migration + demo agent</strong>
+              <p>Node A checkpoints, transfers to hardcoded Node B, Node B verifies and resumes. Demo agent counts, logs its hostname, hops every 5 steps.</p>
             </div>
           </div>
           <div class="roadmap-item">
@@ -283,13 +297,6 @@
             <div>
               <strong>DHT discovery</strong>
               <p>Replace hardcoded addresses with a distributed hash table. Nodes gossip about who's online and what they offer.</p>
-            </div>
-          </div>
-          <div class="roadmap-item">
-            <span class="roadmap-marker">○</span>
-            <div>
-              <strong>Reputation and metering</strong>
-              <p>Nodes and agents build verifiable reputation over time. Usage tracked per hop; credits settle balances.</p>
             </div>
           </div>
         </div>
