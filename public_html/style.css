@@ -601,6 +601,21 @@ footer {
   border-top: 1px solid var(--border);
 }
 
+.footer-links {
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+
+.footer-gh {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--signal);
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.footer-gh:hover { opacity: 0.75; }
+
 footer p {
   font-size: 0.85rem;
   text-align: center;
