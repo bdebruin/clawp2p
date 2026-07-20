@@ -32,11 +32,13 @@ agent-name.claw
 │   └── context.md
 ├── instructions/         # the agent's goals and behavior
 │   └── system.md
-├── skills/               # tools / code the agent carries with it
+├── code/               # tools / code the agent carries with it
 └── history.log           # append-only ledger of where it's been
 ```
 
 **Key design choice:** state is stored as **markdown + JSON**, human-readable and portable, so an agent's "brain" is inspectable and framework-agnostic.
+
+> **Note on naming:** `code/` holds the executable code the agent carries with it. The name deliberately avoids "skills" because that term means something different in OpenClaw, where a skill is a folder containing a `SKILL.md` of instructions for an agent. A future ClawP2P skill in that sense — a `SKILL.md` teaching an agent how to pack itself and request a migration — would live outside the bundle, not in this directory. Using `code/` keeps the two concepts distinct.
 
 ### 3.1 The Manifest Schema
 
@@ -55,7 +57,7 @@ agent-name.claw
   },
 
   "runtime": {
-    "entrypoint": "skills/main.py",
+    "entrypoint": "code/main.py",
     "interpreter": "python3.11",
     "image": "clawp2p/agent-base:0.1"
   },

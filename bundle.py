@@ -2,7 +2,7 @@
 The .claw bundle format: pack, unpack, and manifest validation.
 
 A .claw file is a zip containing manifest.json, state/, instructions/,
-skills/, and history.log. See ClawP2P-spec.md section 3.
+code/, and history.log. See ClawP2P-spec.md section 3.
 
 The ordering in unpack() is the security-critical part of this module. A
 bundle is extracted to a quarantine directory, validated, and hash-verified
@@ -124,7 +124,7 @@ def new_manifest(
     agent_id: str,
     name: str,
     owner_pubkey: str,
-    entrypoint: str = "skills/main.py",
+    entrypoint: str = "code/main.py",
     version: str = "0.1.0",
     interpreter: str = "python3.11",
     image: str = "clawp2p/agent-base:0.1",

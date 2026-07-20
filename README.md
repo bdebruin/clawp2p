@@ -24,7 +24,7 @@ agent-name.claw
 │   └── context.md
 ├── instructions/     # the agent's goals and behavior
 │   └── system.md
-├── skills/           # tools and code the agent carries
+├── code/             # executable code the agent carries
 └── history.log       # append-only ledger of every hop
 ```
 

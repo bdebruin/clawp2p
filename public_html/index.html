@@ -130,7 +130,7 @@
 │   └── context.md
 ├── instructions/     <span class="tree-comment"># the agent's goals and behavior</span>
 │   └── system.md
-├── skills/           <span class="tree-comment"># tools and code the agent carries</span>
+├── code/             <span class="tree-comment"># executable code the agent carries</span>
 └── history.log       <span class="tree-comment"># append-only ledger of every hop</span></code></pre>
         </div>
 
@@ -282,7 +282,7 @@
             <span class="roadmap-marker done-marker">✓</span>
             <div>
               <strong>Single-node runtime — <code>node.py</code> + <code>sandbox.py</code> + <code>transport.py</code></strong>
-              <p>HTTP API (POST /bundle, GET /status, /policy, /agents). Docker sandbox: verify-before-execute, read-only skills mount, writable state only. Bundle transfer with retry and exponential backoff.</p>
+              <p>HTTP API (POST /bundle, GET /status, /policy, /agents). Docker sandbox: verify-before-execute, read-only code mount, writable state only. Bundle transfer with retry and exponential backoff.</p>
             </div>
           </div>
           <div class="roadmap-item active">

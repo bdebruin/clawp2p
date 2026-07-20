@@ -110,7 +110,7 @@ def _build_docker_cmd(
     agent gets no network — which is the safer failure mode.
 
     Filesystem writes: the container mounts agent_dir/state and history.log
-    read-write; everything else (instructions, skills) is read-only.
+    read-write; everything else (instructions, code) is read-only.
     """
     res = manifest["resources"]
     perms = manifest["permissions"]
@@ -150,7 +150,7 @@ def _build_docker_cmd(
         "--mount", f"type=bind,src={agent_dir / 'history.log'},dst=/agent/history.log",
         # Read-only mounts for everything else
         "--mount", f"type=bind,src={agent_dir / 'instructions'},dst=/agent/instructions,readonly",
-        "--mount", f"type=bind,src={agent_dir / 'skills'},dst=/agent/skills,readonly",
+        "--mount", f"type=bind,src={agent_dir / 'code'},dst=/agent/code,readonly",
         "--mount", f"type=bind,src={agent_dir / MANIFEST_NAME},dst=/agent/manifest.json,readonly",
         # Working directory
         "--workdir=/agent",

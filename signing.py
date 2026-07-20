@@ -5,7 +5,7 @@ Every other module depends on the hashing rules defined here, so they are
 spelled out explicitly rather than left to whatever os.walk happens to return:
 
   state_hash   sha256 over the state/ subtree only. Lets a node see that an
-               agent's memory changed across a hop without rehashing skills
+               agent's memory changed across a hop without rehashing code
                and instructions it already has.
 
   bundle_hash  sha256 over every file in the bundle EXCEPT manifest.json,

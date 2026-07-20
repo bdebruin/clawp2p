@@ -21,7 +21,7 @@ The honest pitch is stronger anyway: *here is a thing that does not exist yet, h
 
 **Hero.** The core idea in one sentence: agents that pack themselves up, move to another machine, and pick up where they left off. Everything else is elaboration.
 
-**What actually moves.** The `.claw` bundle — a zip holding markdown state, instructions, skills, and a signed manifest. This is the most concrete, most explicable thing in the project. Show the file tree from Section 3 of the spec. A reader who understands only this section has understood the project.
+**What actually moves.** The `.claw` bundle — a zip holding markdown state, instructions, code, and a signed manifest. This is the most concrete, most explicable thing in the project. Show the file tree from Section 3 of the spec. A reader who understands only this section has understood the project.
 
 **How a hop works.** The eight-step loop from Section 4: decide, checkpoint, discover, negotiate, transfer, verify, resume, log. Worth being precise that the agent doesn't move itself — it declares intent and exits, and the node it was on honors that by repacking and forwarding. Every migration passes a node that checked signatures and policy. That distinction is the whole safety story, so don't bury it.
 

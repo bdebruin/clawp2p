@@ -8,7 +8,7 @@ Read `ClawP2P-spec.md` in the repo root before writing any code. It is the sourc
 
 Ship the MVP in Section 8 of the spec, in this order. Do not skip ahead.
 
-1. **The `.claw` bundle format** — pack and unpack an agent directory (manifest, state, instructions, skills, history log) into a signed zip. Round-trip test it first: pack, unpack, assert byte-identical state.
+1. **The `.claw` bundle format** — pack and unpack an agent directory (manifest, state, instructions, code, history log) into a signed zip. Round-trip test it first: pack, unpack, assert byte-identical state.
 2. **Single-node runtime** — a daemon that accepts a `.claw` bundle, verifies its Ed25519 signature against a trusted key set, runs it in a Docker sandbox with hard CPU/memory/disk limits and default-deny network egress, then re-packs it on exit.
 3. **Two-node migration** — Node A checkpoints an agent mid-run, transfers the bundle to a hardcoded Node B address, Node B verifies and resumes from the checkpoint. No discovery layer yet.
 4. **A trivial demo agent** — counts to N, logs its hostname and hop number to `history.log`, requests migration every 5 steps. This is the thing that proves the system works, so make its output legible to a human watching a terminal.
