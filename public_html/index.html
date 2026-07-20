@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClawP2P — Agents that move</title>
+  <meta name="description" content="A peer-to-peer network for mobile AI agents. Agents that pack themselves up, move to another machine, and pick up where they left off.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="logo">ClawP2P<span class="logo-dot">.ai</span></a>
+      <a href="https://github.com/bdebruin/clawp2p" class="nav-link" target="_blank" rel="noopener">GitHub →</a>
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container">
+        <p class="eyebrow">Napster for AI agents</p>
+        <h1>Agents that pack themselves up, move to another machine, and pick up where they left off.</h1>
+        <p class="hero-sub">Today, agents are locked to one server. ClawP2P is a peer-to-peer network where agents migrate to wherever compute is available — verified, sandboxed, and resuming from checkpoint.</p>
+        <div class="hero-badges">
+          <span class="badge">Early prototype</span>
+          <span class="badge">No running network yet</span>
+          <span class="badge">MVP in progress</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hop animation -->
+    <section class="hop-section" id="hop">
+      <div class="container">
+        <h2>Watch a hop</h2>
+        <p class="section-sub">The agent doesn't move itself. It declares intent and exits. The sending node repacks and forwards. The receiving node verifies before running anything.</p>
+
+        <div class="hop-viz" aria-label="Agent migration visualization: checkpoint, verify, resume">
+          <!-- Static fallback for reduced motion -->
+          <div class="hop-static">
+            <div class="hop-node">
+              <div class="node-label">Node A</div>
+              <div class="hop-phase">
+                <span class="phase-name">checkpoint</span>
+                <div class="agent-bundle">
+                  <span class="bundle-icon">📦</span>
+                  <span class="bundle-count">count: 5</span>
+                </div>
+                <div class="phase-desc">State serialized, agent exits</div>
+              </div>
+            </div>
+            <div class="hop-arrow">
+              <div class="arrow-line"></div>
+              <div class="arrow-label">transfer</div>
+            </div>
+            <div class="hop-node">
+              <div class="node-label">Node B</div>
+              <div class="hop-phase">
+                <span class="phase-name verify-phase">verify</span>
+                <div class="agent-bundle">
+                  <span class="bundle-icon">🔏</span>
+                  <span class="bundle-count">signature ✓</span>
+                </div>
+                <div class="phase-desc">Signature checked, manifest validated</div>
+              </div>
+            </div>
+            <div class="hop-node">
+              <div class="node-label">Node B (running)</div>
+              <div class="hop-phase">
+                <span class="phase-name resume-phase">resume</span>
+                <div class="agent-bundle">
+                  <span class="bundle-icon">▶</span>
+                  <span class="bundle-count" id="live-count">count: 6</span>
+                </div>
+                <div class="phase-desc">Picks up from checkpoint</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Animated version -->
+          <div class="hop-animated" id="hopAnimated">
+            <div class="anim-node node-a">
+              <div class="anim-node-label">Node A</div>
+              <div class="anim-node-box">
+                <div class="anim-agent" id="agentA">
+                  <div class="anim-count" id="countA">count: 5</div>
+                  <div class="anim-status" id="statusA">running</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="anim-transit">
+              <div class="transit-track">
+                <div class="transit-bundle" id="transitBundle">📦</div>
+              </div>
+              <div class="transit-label" id="transitLabel">—</div>
+            </div>
+
+            <div class="anim-node node-b">
+              <div class="anim-node-label">Node B</div>
+              <div class="anim-node-box">
+                <div class="anim-agent" id="agentB">
+                  <div class="anim-count" id="countB">—</div>
+                  <div class="anim-status" id="statusB">waiting</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- What actually moves -->
+    <section class="bundle-section">
+      <div class="container">
+        <h2>What actually moves</h2>
+        <p class="section-sub">An agent is a <code>.claw</code> file — a signed zip. Everything the agent needs to resume is inside it. State is markdown and JSON: human-readable, inspectable, framework-agnostic.</p>
+
+        <div class="file-tree-wrap">
+          <pre class="file-tree"><code>agent-name.claw
+├── manifest.json     <span class="tree-comment"># id, version, resource needs, signature</span>
+├── state/            <span class="tree-comment"># current memory and working state</span>
+│   ├── memory.md
+│   └── context.md
+├── instructions/     <span class="tree-comment"># the agent's goals and behavior</span>
+│   └── system.md
+├── skills/           <span class="tree-comment"># tools and code the agent carries</span>
+└── history.log       <span class="tree-comment"># append-only ledger of every hop</span></code></pre>
+        </div>
+
+        <div class="manifest-detail">
+          <h3>The manifest is the contract</h3>
+          <p>Every component reads from <code>manifest.json</code>. It declares what resources the agent needs, what network destinations it may reach, whether it can replicate, and a cryptographic signature that nodes verify before running anything.</p>
+          <div class="manifest-fields">
+            <div class="field-group">
+              <span class="field-key">agent.id</span>
+              <span class="field-desc">Immutable across all hops. Changes mid-journey → rejected.</span>
+            </div>
+            <div class="field-group">
+              <span class="field-key">permissions.network_egress</span>
+              <span class="field-desc">Explicit allowlist of <code>host:port</code>. Empty means no network. No wildcards.</span>
+            </div>
+            <div class="field-group">
+              <span class="field-key">permissions.may_replicate</span>
+              <span class="field-desc">Defaults false. Node policy must also permit it. Both sides must agree.</span>
+            </div>
+            <div class="field-group">
+              <span class="field-key">migration.hop_count</span>
+              <span class="field-desc">Incremented by the sending node, never by the agent. Rejected when it exceeds max_hops.</span>
+            </div>
+            <div class="field-group">
+              <span class="field-key">integrity.bundle_hash</span>
+              <span class="field-desc">Computed over every file. Recomputed and compared on arrival before anything runs.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How a hop works -->
+    <section class="hop-steps-section">
+      <div class="container">
+        <h2>How a hop works</h2>
+        <p class="section-sub">Eight steps. The agent does steps 1 and 2, then exits. The nodes do everything else.</p>
+
+        <ol class="hop-steps">
+          <li>
+            <span class="step-num">01</span>
+            <div class="step-body">
+              <strong>Decide</strong>
+              <p>The agent decides to move — current node is overloaded, cheaper compute is available, or a task needs a capability elsewhere. Rule-based in the MVP; smarter decision-making comes later.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">02</span>
+            <div class="step-body">
+              <strong>Checkpoint</strong>
+              <p>The agent serializes its current state into the <code>.claw</code> bundle and exits. It doesn't move itself — it packages itself and stops.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">03</span>
+            <div class="step-body">
+              <strong>Discover</strong>
+              <p>The sending node queries the network for candidate nodes via a distributed hash table (DHT). No central server required. Hardcoded in the MVP; DHT comes next.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">04</span>
+            <div class="step-body">
+              <strong>Negotiate</strong>
+              <p>The sending node requests execution on a target. The target accepts or declines based on its own resource policy and what the bundle is asking for.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">05</span>
+            <div class="step-body">
+              <strong>Transfer</strong>
+              <p>The <code>.claw</code> bundle is sent peer-to-peer to the target node. No intermediary. No central relay.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">06</span>
+            <div class="step-body">
+              <strong>Verify</strong>
+              <p>The target checks the Ed25519 signature and validates the manifest before unpacking anything into an executable path. Failure is loud: the bundle is quarantined, the sending node is notified, the reason is logged.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">07</span>
+            <div class="step-body">
+              <strong>Resume</strong>
+              <p>The target unpacks the bundle into a container sandbox and starts the agent from its checkpoint. Hard resource limits apply. Network egress is the declared allowlist only.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">08</span>
+            <div class="step-body">
+              <strong>Log</strong>
+              <p>The hop is appended to <code>history.log</code> inside the bundle and mirrored to the node's local logs. Every migration is auditable after the fact.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- For node operators -->
+    <section class="operators-section">
+      <div class="container">
+        <h2>Running a node</h2>
+        <p class="section-sub">A node is a machine running the ClawP2P runtime. You advertise what you're willing to host. Agents can only run on machines that have opted in and whose policy matches the agent's declared needs.</p>
+
+        <div class="operator-grid">
+          <div class="op-card accept">
+            <h3>What your node will run</h3>
+            <ul>
+              <li>Bundles with a valid Ed25519 signature from a trusted key</li>
+              <li>Agents whose resource requests fit within your configured ceilings</li>
+              <li>Agents whose network allowlist you've reviewed and accepted</li>
+              <li>Agents where hop_count is below max_hops</li>
+            </ul>
+          </div>
+          <div class="op-card reject">
+            <h3>What your node won't run</h3>
+            <ul>
+              <li>Bundles with invalid or missing signatures — quarantined, not deleted</li>
+              <li>Agents requesting more CPU, memory, or disk than your ceiling</li>
+              <li>Agents requesting network access not on your allowlist</li>
+              <li>Self-replicating agents, unless you explicitly enable it</li>
+              <li>Anything that doesn't match your published policy</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sandbox-note">
+          <p>Agents run in a container with hard limits on CPU, memory, and disk. They cannot reach the host filesystem or network beyond what's explicitly granted. Default is deny — you open access, not the agent.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Status -->
+    <section class="status-section">
+      <div class="container">
+        <h2>Where this is right now</h2>
+        <p class="section-sub">Early prototype. No running network. No token, no users, no funding. The honest pitch is stronger: here is a thing that does not exist yet, here is precisely how it would work, here is the code.</p>
+
+        <div class="roadmap">
+          <div class="roadmap-item active">
+            <span class="roadmap-marker">▶</span>
+            <div>
+              <strong>MVP — two-node migration</strong>
+              <p>Pack/unpack the <code>.claw</code> format. Single-node runtime with Docker sandboxing and signature verification. Two-node migration with hardcoded discovery. Demo agent that counts, hops every 5 steps, and shows you it works.</p>
+            </div>
+          </div>
+          <div class="roadmap-item">
+            <span class="roadmap-marker">○</span>
+            <div>
+              <strong>DHT discovery</strong>
+              <p>Replace hardcoded addresses with a distributed hash table. Nodes gossip about who's online and what they offer.</p>
+            </div>
+          </div>
+          <div class="roadmap-item">
+            <span class="roadmap-marker">○</span>
+            <div>
+              <strong>Reputation and metering</strong>
+              <p>Nodes and agents build verifiable reputation over time. Usage tracked per hop; credits settle balances.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="cta-block">
+          <a href="https://github.com/bdebruin/clawp2p" class="cta-link" target="_blank" rel="noopener">View the code on GitHub →</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>ClawP2P — an open experiment in mobile agent infrastructure. Not a product. Not a company. A prototype.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
