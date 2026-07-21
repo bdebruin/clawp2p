@@ -1,0 +1,133 @@
+{
+  "schema": "clawp2p-llm/1.0",
+  "project": {
+    "name": "ClawP2P",
+    "tagline": "Napster for AI agents — agents that pack themselves up, move to another machine, and pick up where they left off.",
+    "description": "ClawP2P is a peer-to-peer network where AI agents migrate between nodes. An agent packages itself into a signed .claw bundle (a zip containing state, instructions, code, and a manifest), transfers to a target node, gets verified, and resumes from checkpoint — without human intervention.",
+    "status": "early prototype — bundle format and single-node runtime are implemented; two-node migration is next",
+    "website": "https://clawp2p.ai",
+    "repo": "https://github.com/bdebruin/clawp2p",
+    "install_guide": "https://clawp2p.ai/install"
+  },
+  "for_agents": {
+    "purpose": "Use this file to understand what ClawP2P is, how to install it, what the API looks like, and how to help a human run a node.",
+    "install_instructions": {
+      "summary": "Clone the repo, install Python deps, generate a node keypair, add trusted keys, pull the Docker base image, run node.py.",
+      "steps": [
+        {
+          "step": 1,
+          "label": "Clone the repo",
+          "command": "git clone https://github.com/bdebruin/clawp2p.git && cd clawp2p"
+        },
+        {
+          "step": 2,
+          "label": "Install dependencies",
+          "command": "pip install -r requirements.txt",
+          "dependencies": ["cryptography>=42.0.0", "flask>=3.0.0", "requests>=2.31.0", "pytest>=8.0.0"]
+        },
+        {
+          "step": 3,
+          "label": "Generate node keypair",
+          "command": "python3 -c \"from signing import generate_keypair, save_private_key; from pathlib import Path; Path('keys').mkdir(exist_ok=True); kp = generate_keypair(); save_private_key(kp, Path('keys/node.pem')); print('Public key:', kp.public_id)\"",
+          "note": "Save the printed public key — you will need it in step 4"
+        },
+        {
+          "step": 4,
+          "label": "Add trusted signing keys",
+          "action": "Create trusted_keys.txt with one ed25519:<hex> key per line. The key from step 3 trusts your own agents.",
+          "example": "echo 'ed25519:YOUR_PUBLIC_KEY_HEX' > trusted_keys.txt"
+        },
+        {
+          "step": 5,
+          "label": "Pull agent base image",
+          "command": "docker pull clawp2p/agent-base:0.1",
+          "fallback": "docker build -t clawp2p/agent-base:0.1 docker/"
+        },
+        {
+          "step": 6,
+          "label": "Start the node",
+          "command": "python3 node.py",
+          "env_vars": {
+            "CLAWP2P_PORT": "7777 (default)",
+            "CLAWP2P_NODE_ID": "human-readable name for this node",
+            "CLAWP2P_DATA_DIR": "/var/lib/clawp2p (default)"
+          }
+        },
+        {
+          "step": 7,
+          "label": "Run tests",
+          "command": "python3 -m pytest test_bundle.py -v",
+          "expected": "29 tests pass"
+        }
+      ],
+      "verify": {
+        "status_endpoint": "GET http://localhost:7777/status",
+        "policy_endpoint": "GET http://localhost:7777/policy",
+        "expected_status_fields": ["node_id", "uptime_seconds", "public_key", "agents_running", "capacity"]
+      }
+    }
+  },
+  "api": {
+    "base": "http://<node-host>:<port>",
+    "default_port": 7777,
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/status",
+        "description": "Node health, uptime, capacity, and public key"
+      },
+      {
+        "method": "GET",
+        "path": "/policy",
+        "description": "What this node will and won't accept — resource ceilings, egress allowlist, replication policy"
+      },
+      {
+        "method": "POST",
+        "path": "/bundle",
+        "content_type": "application/octet-stream",
+        "body": "raw .claw file bytes",
+        "description": "Submit an agent bundle for execution. Node verifies signature, validates manifest against policy, runs in Docker sandbox.",
+        "response_202": {"run_id": "string", "agent_id": "string", "agent_name": "string", "hop": "integer", "status": "accepted", "poll_url": "string"},
+        "response_400": {"error": "bundle rejected", "reason": "string"}
+      },
+      {
+        "method": "GET",
+        "path": "/agents",
+        "description": "All agent runs on this node, most recent first"
+      },
+      {
+        "method": "GET",
+        "path": "/agents/<run_id>",
+        "description": "Detail for a specific run including exit code, stdout tail, migration destination"
+      }
+    ]
+  },
+  "bundle_format": {
+    "extension": ".claw",
+    "format": "zip",
+    "structure": {
+      "manifest.json": "agent identity, resource needs, permissions, migration state, Ed25519 signature",
+      "state/": "agent memory and working state — markdown and JSON, writable across hops",
+      "instructions/": "agent goals and behavior — read-only",
+      "code/": "executable code the agent carries — read-only",
+      "history.log": "append-only ledger of every hop"
+    },
+    "signing": "Ed25519, bundle_hash covers all files plus manifest minus integrity block",
+    "note": "code/ deliberately avoids the name skills/ to prevent collision with OpenClaw skills (SKILL.md-based agent instructions)"
+  },
+  "key_concepts": {
+    "hop": "One migration event: agent checkpoints on Node A, bundle transfers to Node B, Node B verifies and resumes",
+    "verify_before_execute": "A bundle is never unpacked to an executable path until its Ed25519 signature, bundle hash, and manifest are all validated",
+    "quarantine": "Rejected bundles are preserved for inspection, never deleted — the sending node is notified",
+    "node_consent": "A node only runs agents whose resource and permission requests fit within the node's published policy — there is no mechanism for an agent to run on a machine that has not opted in",
+    "migration_signal": "An agent signals it wants to move by writing target host:port to state/migrate_to.txt before exiting — the node reads and clears it after the container stops"
+  },
+  "source_files": {
+    "signing.py": "Ed25519 key generation, canonical hashing (state_hash, bundle_hash), sign/verify",
+    "bundle.py": "Pack/unpack .claw files, manifest validation, node policy enforcement, quarantine",
+    "test_bundle.py": "Full test suite — 29 tests covering round-trip, tamper detection, path traversal, zip bombs, identity continuity",
+    "sandbox.py": "Docker execution — verify-before-execute enforced, read-only code mount, writable state only",
+    "node.py": "Flask HTTP API — POST /bundle, GET /status /policy /agents",
+    "transport.py": "Direct HTTP bundle delivery with retry and exponential backoff"
+  }
+}

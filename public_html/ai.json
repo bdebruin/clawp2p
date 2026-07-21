@@ -1,0 +1,19 @@
+{
+  "name": "ClawP2P",
+  "description": "A peer-to-peer network for mobile AI agents. Agents package themselves into signed .claw bundles, migrate between nodes, and resume from checkpoint.",
+  "url": "https://clawp2p.ai",
+  "type": "open-source-project",
+  "status": "prototype",
+  "topics": ["ai-agents", "peer-to-peer", "agent-mobility", "distributed-systems", "agent-infrastructure"],
+  "links": {
+    "website": "https://clawp2p.ai",
+    "repo": "https://github.com/bdebruin/clawp2p",
+    "install": "https://clawp2p.ai/install",
+    "llm_context": "https://clawp2p.ai/llm.json",
+    "sitemap": "https://clawp2p.ai/sitemap.xml"
+  },
+  "contact": {
+    "github": "https://github.com/bdebruin"
+  },
+  "license": "MIT"
+}

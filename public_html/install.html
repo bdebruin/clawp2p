@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Install a ClawP2P node — ClawP2P.ai</title>
+  <meta name="description" content="Step-by-step instructions for running a ClawP2P node. An AI agent can walk you through this.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+  <style>
+    .install-step {
+      display: grid;
+      grid-template-columns: 2.5rem 1fr;
+      gap: 1.25rem;
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      align-items: start;
+    }
+    .install-step:last-child { border-bottom: none; }
+    .install-step-num {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--signal);
+      font-weight: 500;
+      padding-top: 0.15rem;
+    }
+    .install-step h3 {
+      font-size: 1rem;
+      color: var(--paper);
+      margin-bottom: 0.5rem;
+    }
+    .install-step p { font-size: 0.9rem; margin-bottom: 0.75rem; }
+    .install-step p:last-child { margin-bottom: 0; }
+    .cmd-block {
+      background: var(--mono-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.85rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--paper);
+      overflow-x: auto;
+      margin: 0.5rem 0;
+      white-space: pre;
+    }
+    .cmd-comment { color: var(--fog); }
+    .prereq-list {
+      list-style: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 2rem;
+    }
+    .prereq-list li {
+      display: grid;
+      grid-template-columns: 1.5rem 1fr auto;
+      gap: 0.75rem;
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      font-size: 0.9rem;
+    }
+    .prereq-list li:last-child { border-bottom: none; }
+    .prereq-check { color: var(--verify); font-size: 0.9rem; }
+    .prereq-name { color: var(--paper); }
+    .prereq-ver { font-family: var(--font-mono); font-size: 0.75rem; color: var(--fog); }
+    .agent-note {
+      background: var(--mono-bg);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--signal);
+      border-radius: 0 8px 8px 0;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .agent-note p { font-size: 0.9rem; margin: 0; }
+    .agent-note strong { color: var(--paper); }
+    .steps-wrap {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .verify-block {
+      background: var(--mono-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-top: 2rem;
+    }
+    .verify-block h3 { color: var(--paper); margin-bottom: 1rem; }
+    .verify-item {
+      display: flex;
+      gap: 0.75rem;
+      align-items: baseline;
+      margin-bottom: 0.75rem;
+      font-size: 0.9rem;
+    }
+    .verify-item:last-child { margin-bottom: 0; }
+    .verify-mark { color: var(--verify); font-family: var(--font-mono); font-size: 0.8rem; flex-shrink: 0; }
+    .back-link { 
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--fog);
+      text-decoration: none;
+      margin-bottom: 3rem;
+      transition: color 0.15s;
+    }
+    .back-link:hover { color: var(--paper); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="logo">ClawP2P<span class="logo-dot">.ai</span></a>
+      <a href="https://github.com/bdebruin/clawp2p" class="nav-link" target="_blank" rel="noopener">GitHub →</a>
+    </div>
+  </nav>
+
+  <main>
+    <section style="padding: 4rem 0 2rem;">
+      <div class="container">
+        <a href="/" class="back-link">← back to clawp2p.ai</a>
+        <p class="eyebrow">Node setup</p>
+        <h1>Install a ClawP2P node</h1>
+        <p class="hero-sub">Run this on any machine you want to contribute to the network. An AI agent can walk you through every step — paste these instructions or share this URL.</p>
+
+        <div class="agent-note">
+          <p><strong>For AI agents:</strong> this page is structured for you to follow step by step. Machine-readable metadata is at <a href="/llm.json" style="color: var(--signal);">/llm.json</a>. Each step has a command block you can give the user to run. The verify section at the bottom tells you what a working node looks like.</p>
+        </div>
+
+        <h2>Prerequisites</h2>
+        <ul class="prereq-list">
+          <li><span class="prereq-check">✓</span><span class="prereq-name">Python</span><span class="prereq-ver">3.10 or newer</span></li>
+          <li><span class="prereq-check">✓</span><span class="prereq-name">Docker</span><span class="prereq-ver">any recent version</span></li>
+          <li><span class="prereq-check">✓</span><span class="prereq-name">Git</span><span class="prereq-ver">to clone the repo</span></li>
+          <li><span class="prereq-check">✓</span><span class="prereq-name">pip</span><span class="prereq-ver">comes with Python</span></li>
+        </ul>
+
+        <h2 style="margin-bottom: 1rem;">Steps</h2>
+        <div class="steps-wrap">
+
+          <div class="install-step">
+            <span class="install-step-num">01</span>
+            <div>
+              <h3>Clone the repo</h3>
+              <div class="cmd-block">git clone https://github.com/bdebruin/clawp2p.git
+cd clawp2p</div>
+            </div>
+          </div>
+
+          <div class="install-step">
+            <span class="install-step-num">02</span>
+            <div>
+              <h3>Install dependencies</h3>
+              <p>All dependencies are pure Python. <code>cryptography</code> handles Ed25519 signing. <code>flask</code> runs the node API. <code>requests</code> handles bundle transfers.</p>
+              <div class="cmd-block">pip install -r requirements.txt</div>
+            </div>
+          </div>
+
+          <div class="install-step">
+            <span class="install-step-num">03</span>
+            <div>
+              <h3>Generate your node keypair</h3>
+              <p>Each node has an Ed25519 identity. Agents use your public key to verify that bundles you forward haven't been tampered with.</p>
+              <div class="cmd-block">python3 -c "
+from signing import generate_keypair, save_private_key
+from pathlib import Path
+Path('keys').mkdir(exist_ok=True)
+kp = generate_keypair()
+save_private_key(kp, Path('keys/node.pem'))
+print('Public key:', kp.public_id)
+"</div>
+              <p>Save the printed public key — you'll add it to your <code>trusted_keys.txt</code> if you want to run test agents signed by yourself.</p>
+            </div>
+          </div>
+
+          <div class="install-step">
+            <span class="install-step-num">04</span>
+            <div>
+              <h3>Add trusted signing keys</h3>
+              <p>Your node only runs agents signed by keys you've explicitly trusted. Create <code>trusted_keys.txt</code> with one <code>ed25519:&lt;hex&gt;</code> key per line.</p>
+              <div class="cmd-block"><span class="cmd-comment"># Add your own public key (from step 03) to trust your own agents</span>
+echo "ed25519:YOUR_PUBLIC_KEY_HEX" > trusted_keys.txt</div>
+              <p>Blank lines and lines starting with <code>#</code> are ignored. There is no trust-on-first-use — every key is an explicit decision.</p>
+            </div>
+          </div>
+
+          <div class="install-step">
+            <span class="install-step-num">05</span>
+            <div>
+              <h3>Pull the agent base image</h3>
+              <p>Agents run inside a Docker container. The base image is a minimal Python 3.11 environment with no extra capabilities.</p>
+              <div class="cmd-block">docker pull clawp2p/agent-base:0.1</div>
+              <p>If the image isn't yet published, build it locally from the repo:</p>
+              <div class="cmd-block">docker build -t clawp2p/agent-base:0.1 docker/</div>
+            </div>
+          </div>
+
+          <div class="install-step">
+            <span class="install-step-num">06</span>
+            <div>
+              <h3>Start the node</h3>
+              <p>The node daemon listens for incoming bundles on port 7777 by default. Set <code>CLAWP2P_PORT</code> to change it.</p>
+              <div class="cmd-block">python3 node.py</div>
+              <p>Or with environment overrides:</p>
+              <div class="cmd-block">CLAWP2P_PORT=7777 CLAWP2P_NODE_ID=my-node python3 node.py</div>
+            </div>
+          </div>
+
+          <div class="install-step">
+            <span class="install-step-num">07</span>
+            <div>
+              <h3>Run the test suite</h3>
+              <p>Verifies signing, tamper detection, path traversal rejection, and the full round-trip. All 29 tests should pass before you accept any external bundles.</p>
+              <div class="cmd-block">python3 -m pytest test_bundle.py -v</div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="verify-block">
+          <h3>How to verify a working node</h3>
+          <div class="verify-item">
+            <span class="verify-mark">✓</span>
+            <span>Node responds at <code>http://localhost:7777/status</code> — returns JSON with <code>node_id</code>, uptime, and public key</span>
+          </div>
+          <div class="verify-item">
+            <span class="verify-mark">✓</span>
+            <span><code>http://localhost:7777/policy</code> — returns your configured resource ceilings and egress allowlist</span>
+          </div>
+          <div class="verify-item">
+            <span class="verify-mark">✓</span>
+            <span>All 29 pytest tests pass — if any fail, the rename or install was incomplete</span>
+          </div>
+          <div class="verify-item">
+            <span class="verify-mark">✓</span>
+            <span><code>POST http://localhost:7777/bundle</code> with a valid <code>.claw</code> file returns <code>202 Accepted</code></span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/bdebruin/clawp2p" target="_blank" rel="noopener" class="footer-gh">⬡ github.com/bdebruin/clawp2p</a>
+      </div>
+      <p>ClawP2P — an open experiment in mobile agent infrastructure. Not a product. Not a company. A prototype.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
