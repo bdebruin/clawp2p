@@ -136,7 +136,17 @@ code {
 .hero-sub {
   font-size: 1.1rem;
   max-width: 600px;
+  margin-bottom: 1rem;
+}
+
+.hero-kicker {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--paper);
+  max-width: 520px;
   margin-bottom: 2rem;
+  font-style: italic;
 }
 
 .hero-badges {
