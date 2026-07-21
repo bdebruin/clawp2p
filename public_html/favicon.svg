@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="6" fill="#0D1117"/>
+  <!-- Node A -->
+  <circle cx="7" cy="16" r="4" fill="#161B22" stroke="#4A9EFF" stroke-width="1.5"/>
+  <!-- Node B -->
+  <circle cx="25" cy="16" r="4" fill="#161B22" stroke="#2DD4A0" stroke-width="1.5"/>
+  <!-- Transit arc dots -->
+  <circle cx="12.5" cy="12" r="1.2" fill="#4A9EFF" opacity="0.6"/>
+  <circle cx="16" cy="10.5" r="1.2" fill="#4A9EFF" opacity="0.8"/>
+  <circle cx="19.5" cy="12" r="1.2" fill="#2DD4A0" opacity="0.9"/>
+  <!-- Bundle in transit -->
+  <rect x="14" y="14" width="4" height="4" rx="1" fill="#4A9EFF"/>
+</svg>
