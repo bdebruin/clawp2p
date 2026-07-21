@@ -10,9 +10,11 @@ The contract with callers:
   - manifest must be the dict returned by that same unpack() call
   - If the caller cannot guarantee this, the call is wrong
 
-Enforcement: we re-read the manifest from agent_dir to catch callers who pass
-a stale or manually-constructed manifest. The two must agree on agent.id,
-runtime.entrypoint, resources.*, and permissions.network_egress.
+Enforcement: we re-read the manifest from agent_dir and require it to agree
+with the caller's copy on agent.id, runtime.entrypoint, resources.*, and
+permissions.network_egress. The docker command is then built from the ON-DISK
+manifest — the one that hash-verification actually covered — so a stale or
+doctored caller copy can never widen the limits.
 """
 
 from __future__ import annotations
@@ -20,14 +22,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
-import sys
 import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bundle import BundleError, append_history
+from bundle import append_history
 from signing import MANIFEST_NAME
 
 logger = logging.getLogger(__name__)
@@ -42,8 +45,29 @@ RUNTIME_MAX_MEMORY_MB = int(os.environ.get("CLAWP2P_MAX_MEMORY_MB", "2048"))
 RUNTIME_MAX_CPU = float(os.environ.get("CLAWP2P_MAX_CPU", "2.0"))
 RUNTIME_MAX_RUNTIME_SECONDS = int(os.environ.get("CLAWP2P_MAX_RUNTIME_SECONDS", "600"))
 
+# A fork bomb is not prevented by --cap-drop; it needs an explicit pid ceiling.
+RUNTIME_MAX_PIDS = int(os.environ.get("CLAWP2P_MAX_PIDS", "128"))
+
+# UID:GID the agent process runs as inside the container. The agent-base image
+# must contain this user, and bind-mounted state/ must be writable by it.
+CONTAINER_USER = os.environ.get("CLAWP2P_CONTAINER_USER", "1000:1000")
+
+# Seconds of grace beyond the manifest runtime limit before we force-kill the
+# container. Covers docker startup overhead so a well-behaved agent that used
+# its full budget is not killed mid-shutdown.
+TIMEOUT_GRACE_SECONDS = 10
+
 # Output from the agent is captured but capped to prevent log flooding.
 MAX_OUTPUT_BYTES = 1 * 1024 * 1024  # 1 MB
+
+# A migration target must be a bare host:port. Anything else — URLs, paths,
+# whitespace tricks — is discarded. The agent wrote this file, so it is
+# untrusted input even though the bundle it arrived in was verified.
+_MIGRATION_TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*:\d{1,5}$")
+
+# Docker container/network names must match [a-zA-Z0-9][a-zA-Z0-9_.-]*.
+# Agent ids are DIDs ("did:claw:8f3a...") whose colons docker rejects.
+_DOCKER_NAME_BAD = re.compile(r"[^a-zA-Z0-9_.-]")
 
 
 class SandboxError(Exception):
@@ -67,6 +91,12 @@ class RunResult:
         return self.requested_migration is not None
 
 
+def docker_safe_name(raw: str) -> str:
+    """Reduce an agent id to something docker accepts as a name component."""
+    cleaned = _DOCKER_NAME_BAD.sub("-", raw).strip("-_.")
+    return cleaned or "agent"
+
+
 def _read_manifest(agent_dir: Path) -> dict:
     path = agent_dir / MANIFEST_NAME
     if not path.is_file():
@@ -78,10 +108,17 @@ def _read_manifest(agent_dir: Path) -> dict:
 
 
 def _check_consistency(agent_dir_manifest: dict, caller_manifest: dict) -> None:
-    """Catch the class of bug where caller passes a stale manifest."""
-    for field, path in (
-        ("id", ("agent", "id")),
-        ("entrypoint", ("runtime", "entrypoint")),
+    """Catch the class of bug where caller passes a stale manifest.
+
+    resources and network_egress are compared as whole blocks: they feed
+    directly into container limits, so a silent divergence there is exactly
+    the bug this check exists to catch.
+    """
+    for path in (
+        ("agent", "id"),
+        ("runtime", "entrypoint"),
+        ("resources",),
+        ("permissions", "network_egress"),
     ):
         a_val = agent_dir_manifest
         c_val = caller_manifest
@@ -101,16 +138,20 @@ def _build_docker_cmd(
     manifest: dict,
     *,
     node_id: str,
-) -> list[str]:
+) -> tuple[list[str], str, int]:
     """Construct the docker run command from manifest-declared limits.
+
+    Returns (cmd, container_name, timeout_seconds). The container name is
+    returned so the caller can `docker kill` it if the runtime limit trips —
+    killing the docker CLI process alone does NOT stop the container.
 
     Network egress: Docker cannot enforce host:port allowlists natively, so we
     use --network=none and rely on a user-defined Docker network that proxies
-    only the declared egress targets. If that proxy is not configured, the
-    agent gets no network — which is the safer failure mode.
+    only the declared egress targets. If that network does not exist, docker
+    refuses to start the container at all — fail closed, nothing runs.
 
     Filesystem writes: the container mounts agent_dir/state and history.log
-    read-write; everything else (instructions, code) is read-only.
+    read-write; everything else (instructions, code, manifest) is read-only.
     """
     res = manifest["resources"]
     perms = manifest["permissions"]
@@ -121,25 +162,32 @@ def _build_docker_cmd(
     timeout = min(res["max_runtime_seconds"], RUNTIME_MAX_RUNTIME_SECONDS)
 
     entrypoint = rt["entrypoint"]
-    # Already validated by bundle.validate_manifest() — not absolute, no ..
-    # We assert rather than re-validate: if this fires, the caller bypassed unpack().
-    assert not Path(entrypoint).is_absolute(), "entrypoint must be relative — was unpack() called?"
-    assert ".." not in Path(entrypoint).parts, "entrypoint traversal — was unpack() called?"
+    # Already validated by bundle.validate_manifest(). Re-checked here as a
+    # hard raise (not assert — asserts vanish under python -O) because a
+    # traversing entrypoint at this point means the caller bypassed unpack().
+    ep = Path(entrypoint)
+    if ep.is_absolute() or ".." in ep.parts:
+        raise SandboxError(f"unsafe entrypoint {entrypoint!r} — was unpack() called?")
 
     image = rt.get("image", AGENT_BASE_IMAGE)
 
+    safe_id = docker_safe_name(manifest["agent"]["id"])
+    container_name = f"clawp2p-{safe_id[:24]}-{uuid.uuid4().hex[:8]}"
+
     egress_targets = perms.get("network_egress", [])
-    network_mode = f"clawp2p-egress-{manifest['agent']['id']}" if egress_targets else "none"
+    network_mode = f"clawp2p-egress-{safe_id}" if egress_targets else "none"
 
     cmd = [
         "docker", "run",
         "--rm",
-        "--name", f"clawp2p-{manifest['agent']['id'][:16]}-{_now_stamp()}",
+        "--name", container_name,
         # Resource limits
         f"--memory={memory_mb}m",
         f"--memory-swap={memory_mb}m",  # no swap
         f"--cpus={cpu}",
-        # Security: drop all capabilities, no new privileges
+        f"--pids-limit={RUNTIME_MAX_PIDS}",
+        # Security: non-root, drop all capabilities, no new privileges
+        f"--user={CONTAINER_USER}",
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges:true",
         "--read-only",  # root FS read-only; writable mounts declared below
@@ -164,11 +212,27 @@ def _build_docker_cmd(
         rt["interpreter"], f"/agent/{entrypoint}",
     ]
 
-    return cmd, timeout
+    return cmd, container_name, timeout
 
 
-def _now_stamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+def _kill_container(container_name: str) -> None:
+    """Force-stop a container. Errors are logged, not raised: the container
+    may already have exited between the timeout firing and the kill."""
+    try:
+        subprocess.run(
+            ["docker", "kill", container_name],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("docker kill %s failed: %r", container_name, exc)
+
+
+def _read_capped(path: Path) -> str:
+    """Read at most MAX_OUTPUT_BYTES from a capture file."""
+    with path.open("rb") as handle:
+        return handle.read(MAX_OUTPUT_BYTES).decode("utf-8", errors="replace")
 
 
 def _read_migration_request(agent_dir: Path) -> str | None:
@@ -177,6 +241,10 @@ def _read_migration_request(agent_dir: Path) -> str | None:
     The file contains a single node address (host:port). The node reads it
     after the container exits, then clears it — the agent never sets it
     permanently because state/ survives across hops.
+
+    The content is agent-controlled and therefore untrusted: anything that is
+    not a bare host:port is dropped here, and the node must still check the
+    target against its own peer policy before sending anything to it.
     """
     req_file = agent_dir / "state" / "migrate_to.txt"
     if not req_file.is_file():
@@ -184,6 +252,9 @@ def _read_migration_request(agent_dir: Path) -> str | None:
     target = req_file.read_text().strip()
     req_file.unlink()  # consume the request
     if not target:
+        return None
+    if not _MIGRATION_TARGET_RE.match(target):
+        logger.warning("discarding malformed migration target %r", target[:128])
         return None
     logger.info("agent requested migration to %s", target)
     return target
@@ -212,12 +283,21 @@ def run(
     on_disk_manifest = _read_manifest(agent_dir)
     _check_consistency(on_disk_manifest, manifest)
 
-    # Ensure history.log exists so the bind mount doesn't fail
+    # Ensure every mount source exists: --mount type=bind errors out on a
+    # missing source rather than creating it. A bundle may legitimately lack
+    # state/ (fresh agent) or instructions/ — empty is fine, absent is not.
+    for sub in ("state", "instructions", "code"):
+        (agent_dir / sub).mkdir(exist_ok=True)
     history = agent_dir / "history.log"
     if not history.exists():
         history.touch()
 
-    docker_cmd, timeout = _build_docker_cmd(agent_dir, manifest, node_id=node_id)
+    # Limits come from the on-disk manifest — the copy hash verification
+    # covered — not the caller's. _check_consistency makes divergence loud,
+    # this makes it irrelevant.
+    docker_cmd, container_name, timeout = _build_docker_cmd(
+        agent_dir, on_disk_manifest, node_id=node_id
+    )
 
     agent_id = manifest["agent"]["id"]
     hop = manifest["migration"]["hop_count"]
@@ -235,35 +315,48 @@ def run(
         )
 
     start = datetime.now(timezone.utc)
-    try:
-        proc = subprocess.run(
-            docker_cmd,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
 
-        stdout = proc.stdout[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
-        stderr = proc.stderr[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
+    # Output goes to files, not pipes: capture_output buffers in this
+    # process's memory with no ceiling, so a stdout-flooding agent could OOM
+    # the node before the cap was applied. Files put the flood on disk and
+    # the cap is applied at read time.
+    with tempfile.TemporaryDirectory(prefix="clawp2p-io-") as io_dir:
+        out_path = Path(io_dir) / "stdout"
+        err_path = Path(io_dir) / "stderr"
 
-        if proc.returncode != 0:
-            logger.warning(
-                "agent %s exited %d after %.1fs", agent_id, proc.returncode, elapsed
+        try:
+            with out_path.open("wb") as out_f, err_path.open("wb") as err_f:
+                proc = subprocess.run(
+                    docker_cmd,
+                    stdout=out_f,
+                    stderr=err_f,
+                    timeout=timeout + TIMEOUT_GRACE_SECONDS,
+                    check=False,
+                )
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+            stdout = _read_capped(out_path)
+            stderr = _read_capped(err_path)
+
+            if proc.returncode != 0:
+                logger.warning(
+                    "agent %s exited %d after %.1fs", agent_id, proc.returncode, elapsed
+                )
+            else:
+                logger.info("agent %s completed hop=%d in %.1fs", agent_id, hop, elapsed)
+
+        except subprocess.TimeoutExpired:
+            # The timeout killed the docker CLI process — NOT the container,
+            # which is still running and must be stopped explicitly.
+            _kill_container(container_name)
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+            append_history(agent_dir, f"timeout\tnode={node_id}\thop={hop}\telapsed={elapsed:.1f}s")
+            raise SandboxError(
+                f"agent {agent_id} exceeded runtime limit of {timeout}s on hop {hop}"
             )
-        else:
-            logger.info("agent %s completed hop=%d in %.1fs", agent_id, hop, elapsed)
-
-    except subprocess.TimeoutExpired:
-        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
-        append_history(agent_dir, f"timeout\tnode={node_id}\thop={hop}\telapsed={elapsed:.1f}s")
-        raise SandboxError(
-            f"agent {agent_id} exceeded runtime limit of {timeout}s on hop {hop}"
-        )
-    except FileNotFoundError as exc:
-        raise SandboxError(
-            "docker not found — install Docker and ensure it is on PATH"
-        ) from exc
+        except FileNotFoundError as exc:
+            raise SandboxError(
+                "docker not found — install Docker and ensure it is on PATH"
+            ) from exc
 
     migration_target = _read_migration_request(agent_dir)
 

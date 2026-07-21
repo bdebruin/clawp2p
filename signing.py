@@ -177,6 +177,40 @@ def compute_bundle_hash(bundle_root: Path, manifest: dict) -> str:
     return HASH_PREFIX + digest.hexdigest()
 
 
+# The agent's immutable core: the parts the OWNER vouches for, signed once at
+# creation and never re-signed. Everything else (state/, history.log, the
+# migration block) mutates on every hop and is covered by the sending node's
+# hop signature instead. resources and permissions are in the core on purpose:
+# an agent must not be able to widen its own grants mid-journey.
+CORE_MANIFEST_BLOCKS = ("schema_version", "agent", "runtime", "resources", "permissions")
+CORE_TREES = ("code", "instructions")
+
+_EMPTY_TREE_HASH = HASH_PREFIX + hashlib.sha256(b"").hexdigest()
+
+
+def compute_core_hash(bundle_root: Path, manifest: dict) -> str:
+    """Hash of the agent's immutable core: code/, instructions/, and the
+    manifest blocks that must not change across hops.
+
+    The owner's signature over this hash stays valid for the agent's entire
+    lifetime, which is what lets a node repack a bundle after a hop without
+    holding the owner's key: the node re-signs the mutable envelope, the
+    owner's core signature travels along untouched.
+    """
+    digest = hashlib.sha256()
+    for tree in CORE_TREES:
+        sub = bundle_root / tree
+        tree_hash = _hash_tree(sub) if sub.is_dir() else _EMPTY_TREE_HASH
+        digest.update(tree.encode("ascii"))
+        digest.update(b"\0")
+        digest.update(tree_hash.encode("ascii"))
+        digest.update(b"\0")
+
+    core_blocks = {key: manifest[key] for key in CORE_MANIFEST_BLOCKS if key in manifest}
+    digest.update(canonical_json(core_blocks))
+    return HASH_PREFIX + digest.hexdigest()
+
+
 # --------------------------------------------------------------------------
 # Sign / verify
 # --------------------------------------------------------------------------

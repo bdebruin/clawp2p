@@ -30,6 +30,7 @@ from signing import (
     SigningError,
     TrustedKeys,
     compute_bundle_hash,
+    compute_core_hash,
     compute_state_hash,
     sign_hash,
     verify_hash,
@@ -253,6 +254,24 @@ def check_identity_continuity(previous: dict, current: dict) -> None:
 def pack(agent_dir: Path, out_path: Path, keypair: Keypair, *, manifest: dict | None = None) -> Path:
     """Seal an agent directory into a signed .claw file.
 
+    Two signatures, two signers:
+
+      core_signature  The OWNER's signature over the immutable core (code/,
+                      instructions/, and the identity/runtime/resources/
+                      permissions manifest blocks). Made once, on the first
+                      pack, and carried forward verbatim on every later pack.
+                      If the core changed, the carried signature no longer
+                      verifies and pack() refuses — a node cannot alter the
+                      agent's code or widen its grants, only ferry them.
+
+      hop_signature   The PACKER's signature over the whole bundle (including
+                      mutated state and the migration block). Re-made on
+                      every pack by whoever is sending: the owner on hop 0,
+                      the sending node afterwards.
+
+    So the keypair argument is the packer's key. It must be the owner's key
+    only on the first pack, when the core signature is created.
+
     The manifest is written last, after hashing, because the hash covers the
     manifest minus its integrity block -- so integrity is filled in from the
     hash it is about to be stored alongside.
@@ -273,9 +292,6 @@ def pack(agent_dir: Path, out_path: Path, keypair: Keypair, *, manifest: dict | 
     if not entrypoint.is_file():
         raise BundleError(f"entrypoint does not exist in bundle: {manifest['runtime']['entrypoint']}")
 
-    if manifest["agent"]["owner_pubkey"] != keypair.public_id:
-        raise BundleError("manifest.agent.owner_pubkey does not match the signing key")
-
     # Scan before hashing: signing.py also rejects symlinks, but reaching it
     # first would surface a SigningError for what is really a malformed bundle.
     for path in agent_dir.rglob("*"):
@@ -283,15 +299,45 @@ def pack(agent_dir: Path, out_path: Path, keypair: Keypair, *, manifest: dict | 
             raise BundleError(f"symlink in agent directory: {path.relative_to(agent_dir)}")
 
     manifest = json.loads(json.dumps(manifest))  # defensive copy
+    existing = manifest.get("integrity") or {}
     manifest["integrity"] = {}
+
+    owner = manifest["agent"]["owner_pubkey"]
+    core_hash = compute_core_hash(agent_dir, manifest)
+
+    if existing.get("core_signature"):
+        # Repack after a hop: the owner's core signature travels unchanged.
+        # Verifying it against the RECOMPUTED core hash is what stops a node
+        # from swapping code/instructions and shipping the old signature.
+        try:
+            verify_hash(owner, core_hash, existing["core_signature"])
+        except SigningError as exc:
+            raise BundleError(
+                f"core changed since the owner signed it — refusing to repack: {exc}"
+            ) from exc
+        core_signature = existing["core_signature"]
+        core_signed_at = existing.get("core_signed_at")
+    else:
+        # First pack: only the owner can create the core signature.
+        if owner != keypair.public_id:
+            raise BundleError(
+                "first pack must be signed by the owner key "
+                "(manifest.agent.owner_pubkey does not match the signing key)"
+            )
+        core_signature = sign_hash(keypair, core_hash)
+        core_signed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     state_hash = compute_state_hash(agent_dir)
     bundle_hash = compute_bundle_hash(agent_dir, manifest)
     manifest["integrity"] = {
+        "core_hash": core_hash,
+        "core_signature": core_signature,
+        "core_signed_at": core_signed_at,
         "state_hash": state_hash,
         "bundle_hash": bundle_hash,
-        "signature": sign_hash(keypair, bundle_hash),
-        "signed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "hop_signature": sign_hash(keypair, bundle_hash),
+        "hop_pubkey": keypair.public_id,
+        "hop_signed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
     out_path = Path(out_path)
@@ -357,10 +403,18 @@ def unpack(
     dest_dir: Path,
     trusted_keys: TrustedKeys,
     *,
+    trusted_peers: TrustedKeys | None = None,
     policy: NodePolicy | None = None,
     quarantine_dir: Path | None = None,
 ) -> dict:
     """Verify a .claw file and, only if it passes, unpack it to dest_dir.
+
+    trusted_keys are OWNER keys: whose agents this node will run at all.
+    trusted_peers are NODE keys: whose per-hop repacks this node accepts.
+    A hop signature from the owner itself is always acceptable (hop 0, or an
+    owner re-sending their own agent), so a node with no trusted_peers can
+    still receive agents directly from owners it trusts — it just cannot
+    accept forwarded bundles from other nodes.
 
     Returns the validated manifest. Raises QuarantinedBundle on any failure,
     with the extracted content preserved for inspection rather than deleted.
@@ -407,16 +461,41 @@ def unpack(
         validate_manifest(manifest)
 
         integrity = manifest.get("integrity") or {}
-        for key in ("state_hash", "bundle_hash", "signature", "signed_at"):
+        for key in (
+            "core_hash", "core_signature",
+            "state_hash", "bundle_hash",
+            "hop_signature", "hop_pubkey",
+        ):
             if key not in integrity:
                 raise BundleError(f"manifest missing integrity.{key}")
 
         owner = manifest["agent"]["owner_pubkey"]
         trusted_keys.require(owner)
 
+        # Who packed this hop? The owner is always an acceptable packer of
+        # their own agent; any other packer must be an explicitly trusted peer.
+        hop_pubkey = integrity["hop_pubkey"]
+        if hop_pubkey != owner:
+            if trusted_peers is None or hop_pubkey not in trusted_peers:
+                raise BundleError(
+                    f"hop signed by a key that is neither the owner nor a trusted peer: {hop_pubkey}"
+                )
+
         stripped = json.loads(json.dumps(manifest))
         stripped["integrity"] = {}
 
+        # Owner's guarantee: code, instructions, and grants are exactly what
+        # the owner signed at creation, no matter how many nodes relayed it.
+        recomputed_core = compute_core_hash(staging, stripped)
+        if recomputed_core != integrity["core_hash"]:
+            raise BundleError(
+                "core_hash mismatch: code/instructions/grants were modified "
+                f"(manifest says {integrity['core_hash']}, computed {recomputed_core})"
+            )
+        verify_hash(owner, integrity["core_hash"], integrity["core_signature"])
+
+        # Packer's guarantee: state, history, and migration bookkeeping are
+        # exactly what the last (trusted) sender packed.
         recomputed = compute_bundle_hash(staging, stripped)
         if recomputed != integrity["bundle_hash"]:
             raise BundleError(
@@ -428,7 +507,7 @@ def unpack(
         if recomputed_state != integrity["state_hash"]:
             raise BundleError("state_hash mismatch: agent state was modified after signing")
 
-        verify_hash(owner, integrity["bundle_hash"], integrity["signature"])
+        verify_hash(hop_pubkey, integrity["bundle_hash"], integrity["hop_signature"])
 
         if policy is not None:
             policy.check(manifest)

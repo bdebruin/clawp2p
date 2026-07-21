@@ -85,27 +85,49 @@ agent-name.claw
   },
 
   "integrity": {
+    "core_hash": "sha256:6b02...",
+    "core_signature": "ed25519:88f1...",
+    "core_signed_at": "2026-07-20T14:35:12Z",
     "state_hash": "sha256:a3f5...",
     "bundle_hash": "sha256:9c21...",
-    "signature": "ed25519:3045022100...",
-    "signed_at": "2026-07-20T14:35:12Z"
+    "hop_signature": "ed25519:3045...",
+    "hop_pubkey": "ed25519:MCowBQYDK2VwAyEA...",
+    "hop_signed_at": "2026-07-20T18:02:44Z"
   }
 }
 ```
+
+**Two signatures, two signers.** State mutates on every hop, so a single
+owner signature over the whole bundle would go stale the moment the agent did
+any work — and the relaying node doesn't hold the owner's key to refresh it.
+The split resolves that:
+
+- **`core_signature`** — the *owner's* Ed25519 signature over the immutable
+  core: the `code/` and `instructions/` trees plus the `agent`, `runtime`,
+  `resources`, and `permissions` manifest blocks. Signed once at creation,
+  carried forward verbatim forever. Any node at any hop can prove the code
+  and grants are exactly what the owner shipped.
+- **`hop_signature`** — the *packer's* signature (`hop_pubkey`) over the full
+  bundle, including mutated state and migration bookkeeping. Re-made by
+  whoever sends: the owner on hop 0, the sending node afterwards. Receivers
+  accept a hop signed by the owner, or by a node key in their trusted-peers
+  set — anything else is rejected.
 
 **Field rules the runtime must enforce:**
 
 | Block | Rule |
 |---|---|
 | `agent.id` | Immutable across all hops. Assigned once at creation. A bundle whose `id` changes mid-journey is rejected. |
-| `agent.owner_pubkey` | The key that must validate `integrity.signature`. Nodes check it against their trusted key set. |
+| `agent.owner_pubkey` | The key that must validate `integrity.core_signature`. Nodes check it against their trusted key set. |
 | `runtime.entrypoint` | Must resolve inside the bundle. Absolute paths, `..`, and symlinks are rejected outright. |
 | `resources.*` | A request, not a grant. The node clamps these to its own policy ceiling and rejects anything above it rather than silently reducing. |
 | `permissions.network_egress` | Explicit allowlist of `host:port`. Empty array means no network. There is no wildcard. |
 | `permissions.may_replicate` | Defaults `false`. If `true`, `max_replicas` must be a positive integer and the node's own policy must also permit replication. Both sides must agree. |
 | `migration.hop_count` | Incremented by the *sending* node, never by the agent. Rejected when it exceeds `max_hops`. |
-| `migration.requested_next` | The agent's stated intent. Advisory only — the sending node decides whether to honor it. |
-| `integrity.bundle_hash` | Computed over every file except the `signature` field itself. Recomputed and compared on arrival before anything is unpacked to an executable path. |
+| `migration.requested_next` | The agent's stated intent. Advisory only — the sending node honors it only if the target is on its own outbound `allowed_peers` list. |
+| `integrity.core_hash` | Covers `code/`, `instructions/`, and the owner-signed manifest blocks. Immutable across hops: a relay node that touches any of it can no longer produce a bundle that verifies. |
+| `integrity.bundle_hash` | Computed over every file plus the manifest minus its `integrity` block. Recomputed and compared on arrival before anything is unpacked to an executable path. |
+| `integrity.hop_pubkey` | Must be the owner key or a key in the receiving node's trusted-peers set, and must validate `hop_signature` over `bundle_hash`. |
 
 **Rejection is loud.** Any schema violation is logged with the reason, the bundle is quarantined rather than deleted, and the sending node is notified. Silent failure here hides attacks.
 

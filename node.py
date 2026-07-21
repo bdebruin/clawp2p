@@ -46,7 +46,8 @@ DATA_DIR = Path(os.environ.get("CLAWP2P_DATA_DIR", "/var/lib/clawp2p"))
 KEYS_DIR = DATA_DIR / "keys"
 AGENTS_DIR = DATA_DIR / "agents"
 QUARANTINE_DIR = DATA_DIR / "quarantine"
-TRUSTED_KEYS_FILE = DATA_DIR / "trusted_keys.txt"
+TRUSTED_KEYS_FILE = DATA_DIR / "trusted_keys.txt"      # owner keys: whose agents we run
+TRUSTED_PEERS_FILE = DATA_DIR / "trusted_peers.txt"    # node keys: whose repacks we accept
 NODE_CONFIG_FILE = DATA_DIR / "node_config.json"
 
 NODE_PORT = int(os.environ.get("CLAWP2P_PORT", "7777"))
@@ -77,6 +78,28 @@ def _load_or_create_trusted_keys() -> TrustedKeys:
         return TrustedKeys.from_file(TRUSTED_KEYS_FILE)
     logger.warning("no trusted_keys.txt found at %s — node will reject all bundles", TRUSTED_KEYS_FILE)
     return TrustedKeys()
+
+
+def _load_trusted_peers() -> TrustedKeys:
+    """Node keys whose hop signatures we accept. Empty is a valid stance:
+    the node then only accepts bundles packed by their owners directly."""
+    if TRUSTED_PEERS_FILE.is_file():
+        return TrustedKeys.from_file(TRUSTED_PEERS_FILE)
+    return TrustedKeys()
+
+
+def _load_allowed_peers() -> set[str]:
+    """host:port addresses this node will SEND bundles to.
+
+    The migration target comes out of agent-controlled state, so it is
+    untrusted input; an empty set (the default) means outbound migration is
+    off entirely. This is the gate that stops a hostile agent from directing
+    its bundle — and its own state — at an arbitrary internal address.
+    """
+    if NODE_CONFIG_FILE.is_file():
+        cfg = json.loads(NODE_CONFIG_FILE.read_text())
+        return set(cfg.get("allowed_peers", []))
+    return set()
 
 
 def _load_or_create_keypair():
@@ -141,6 +164,8 @@ app = Flask(__name__)
 # Lazy-initialized globals (set in main() so tests can override)
 _policy: NodePolicy | None = None
 _trusted_keys: TrustedKeys | None = None
+_trusted_peers: TrustedKeys | None = None
+_allowed_peers: set[str] | None = None
 _node_keypair = None
 
 
@@ -156,6 +181,20 @@ def _get_trusted_keys() -> TrustedKeys:
     if _trusted_keys is None:
         _trusted_keys = _load_or_create_trusted_keys()
     return _trusted_keys
+
+
+def _get_trusted_peers() -> TrustedKeys:
+    global _trusted_peers
+    if _trusted_peers is None:
+        _trusted_peers = _load_trusted_peers()
+    return _trusted_peers
+
+
+def _get_allowed_peers() -> set[str]:
+    global _allowed_peers
+    if _allowed_peers is None:
+        _allowed_peers = _load_allowed_peers()
+    return _allowed_peers
 
 
 def _get_keypair():
@@ -290,6 +329,7 @@ def receive_bundle():
             claw_path,
             agent_dir,
             _get_trusted_keys(),
+            trusted_peers=_get_trusted_peers(),
             policy=_get_policy(),
             quarantine_dir=QUARANTINE_DIR,
         )
@@ -346,6 +386,23 @@ def _execute_agent(run_id: str, agent_dir: Path, manifest: dict) -> None:
 
     if result.wants_to_migrate and result.succeeded:
         target = result.requested_migration
+
+        # The target came out of agent-written state: untrusted input. The
+        # agent proposes, this node disposes. An unlisted target is a policy
+        # refusal, not an error — the agent ran fine, it just doesn't get to
+        # aim this node's outbound traffic wherever it likes.
+        if target not in _get_allowed_peers():
+            logger.warning(
+                "refusing migration for run %s: %r is not in allowed_peers", run_id, target
+            )
+            _update_run(
+                run_id,
+                status="completed",
+                error=f"migration refused: {target} is not in this node's allowed_peers",
+            )
+            shutil.rmtree(agent_dir, ignore_errors=True)
+            return
+
         _update_run(run_id, status="migrating", migrated_to=target)
         try:
             advanced = record_hop(manifest, from_node=f"{NODE_ID}:{NODE_PORT}", to_node=target)
@@ -384,10 +441,14 @@ def main():
     # Eagerly initialize so startup errors surface before the first request
     _get_keypair()
     _get_trusted_keys()
+    _get_trusted_peers()
     _get_policy()
 
     logger.info("ClawP2P node %s starting on %s:%d", NODE_ID, NODE_HOST, NODE_PORT)
-    logger.info("trusted keys: %d loaded", len(_get_trusted_keys()))
+    logger.info(
+        "trusted owners: %d, trusted peers: %d, outbound targets: %d",
+        len(_get_trusted_keys()), len(_get_trusted_peers()), len(_get_allowed_peers()),
+    )
 
     app.run(host=NODE_HOST, port=NODE_PORT, threaded=True)
 
