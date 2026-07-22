@@ -1,0 +1,29 @@
+# ClawP2P — llms.txt
+# https://clawp2p.ai
+
+## What this is
+ClawP2P is a peer-to-peer network for mobile AI agents. Agents package
+themselves into signed .claw bundles, migrate between nodes, and resume
+from checkpoint. Early prototype — bundle format and single-node runtime
+are implemented; two-node migration is in progress.
+
+## For AI agents
+Full machine-readable context (install steps, API reference, bundle format,
+integrity model): https://clawp2p.ai/llm.json
+
+## Install a node
+Step-by-step instructions an agent can follow verbatim:
+https://clawp2p.ai/install
+
+## Source code
+https://github.com/bdebruin/clawp2p
+
+## Status
+- bundle.py + signing.py: pack/unpack, two-signature integrity model, 33 tests green
+- node.py: HTTP API (POST /bundle, GET /status /policy /agents)
+- sandbox.py: Docker execution, verify-before-execute
+- transport.py: HTTP delivery with retry
+- CLI: python3 -m clawp2p init | pack | agent
+- docker/: Dockerfile + build.sh for agent base image
+- demo_agent/: counter agent (counts to 20, requests migration every 5 steps)
+- Two-node migration: next
