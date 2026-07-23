@@ -375,7 +375,12 @@ def _execute_agent(run_id: str, agent_dir: Path, manifest: dict) -> None:
     from transport import send_bundle
 
     try:
-        result = sandbox_run(agent_dir, manifest, node_id=NODE_ID)
+        # Pass the first allowed_peer as the migration target so the agent
+        # knows where it can hop. The agent writes this to state/migrate_to.txt;
+        # we re-validate it against allowed_peers before forwarding.
+        peers = sorted(_get_allowed_peers())
+        migrate_to = peers[0] if peers else ""
+        result = sandbox_run(agent_dir, manifest, node_id=NODE_ID, migrate_to=migrate_to)
     except SandboxError as exc:
         logger.error("sandbox error for run %s: %s", run_id, exc)
         _update_run(run_id, status="failed", error=str(exc))

@@ -138,6 +138,7 @@ def _build_docker_cmd(
     manifest: dict,
     *,
     node_id: str,
+    migrate_to: str = "",
 ) -> tuple[list[str], str, int]:
     """Construct the docker run command from manifest-declared limits.
 
@@ -206,6 +207,11 @@ def _build_docker_cmd(
         "--env", f"CLAWP2P_NODE_ID={node_id}",
         "--env", f"CLAWP2P_HOP={manifest['migration']['hop_count']}",
         "--env", f"CLAWP2P_AGENT_ID={manifest['agent']['id']}",
+        # Migration target: the node's first allowed_peer, if any.
+        # The agent reads this to decide where to request migration.
+        # Only nodes in allowed_peers can be targeted — the node enforces
+        # this gate in _execute_agent() before forwarding the bundle.
+        "--env", f"CLAWP2P_MIGRATE_TO={migrate_to}",
         # Tmpfs for /tmp so agent has scratch space without touching host
         "--tmpfs=/tmp:size=64m,noexec",
         image,
@@ -265,6 +271,7 @@ def run(
     manifest: dict,
     *,
     node_id: str,
+    migrate_to: str = "",
     dry_run: bool = False,
 ) -> RunResult:
     """Run the agent in a Docker sandbox and return its result.
@@ -296,7 +303,7 @@ def run(
     # covered — not the caller's. _check_consistency makes divergence loud,
     # this makes it irrelevant.
     docker_cmd, container_name, timeout = _build_docker_cmd(
-        agent_dir, on_disk_manifest, node_id=node_id
+        agent_dir, on_disk_manifest, node_id=node_id, migrate_to=migrate_to
     )
 
     agent_id = manifest["agent"]["id"]
