@@ -347,8 +347,19 @@ def receive_bundle():
     finally:
         claw_path.unlink(missing_ok=True)
 
-    # Verification passed. Run asynchronously so the HTTP connection doesn't
-    # hold open for the agent's full runtime.
+    # Verification passed.
+    # Fix ownership: state/ and history.log must be writable by the container
+    # user (uid 1000). The node runs as root, bundle files land as root-owned.
+    try:
+        import subprocess as _sp
+        _sp.run(["chown", "-R", "1000:1000",
+                 str(agent_dir / "state"),
+                 str(agent_dir / "history.log")],
+                check=True)
+    except Exception as _e:
+        logger.warning("chown failed (non-fatal on non-Linux): %s", _e)
+
+    # Run asynchronously so the HTTP connection doesn't hold open.
     run_rec = _register_run(
         agent_id=manifest["agent"]["id"],
         agent_name=manifest["agent"]["name"],
