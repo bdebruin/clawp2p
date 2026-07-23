@@ -64,3 +64,27 @@ pytest test_bundle.py -v
 ## License
 
 MIT
+
+## Two-node migration — verified working
+
+```
+hop=0  barry-macbook    steps 1–5   → requested migration to DO server
+hop=1  do-droplet-157   steps 6–20  → resumed at step 5, counted to 20. exit_code: 0
+```
+
+Agent started on a MacBook, counted to 5, packaged itself into a signed `.claw` bundle,
+transferred over the internet to a DigitalOcean droplet, verified, resumed at step 5,
+counted to 20. Full two-node migration working as of July 23, 2026.
+
+### What's working
+- ✅ `.claw` bundle format — pack, unpack, sign, verify (two-signature model)
+- ✅ CLI — `python3 -m clawp2p init | pack | agent`
+- ✅ Docker sandbox — verify-before-execute, non-root uid 1000, read-only code mount
+- ✅ Node API — POST /bundle, GET /status /policy /agents
+- ✅ Transport — HTTP delivery with retry
+- ✅ Two-node migration — MacBook → DigitalOcean droplet, state preserved across hop
+
+### Next
+- DHT discovery (replace hardcoded allowed_peers)
+- Reputation and metering
+- Multi-hop chains
