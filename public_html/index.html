@@ -153,7 +153,7 @@
 
         <div class="manifest-detail">
           <h3>The manifest is the contract</h3>
-          <p>Every component reads from <code>manifest.json</code>. It declares what resources the agent needs, what network destinations it may reach, whether it can replicate, and a cryptographic signature that nodes verify before running anything.</p>
+          <p>Every component reads from <code>manifest.json</code>. It carries two independent signatures. The <strong>core signature</strong> is made once by the owner, over the immutable parts — <code>code/</code>, <code>instructions/</code>, and the permissions block — and travels unchanged across every hop: no relay can widen the agent’s grants or swap its code without breaking it. The <strong>hop signature</strong> is made fresh by whoever packs each hop, over the whole bundle including mutated state — so a receiving node can verify the exact state it received without holding the owner’s private key.</p>
           <div class="manifest-fields">
             <div class="field-group">
               <span class="field-key">agent.id</span>
@@ -277,6 +277,7 @@
 
         <div class="sandbox-note">
           <p>Agents run in a container with hard limits on CPU, memory, and disk. They cannot reach the host filesystem or network beyond what's explicitly granted. Default is deny — you open access, not the agent.</p>
+          <p style="margin-top:0.75rem;">This is a permissioned allowlist network today — a node only runs agents from keys it has explicitly trusted. Open participation (any agent from any owner) depends on the reputation layer, which is not built yet.</p>
         </div>
       </div>
     </section>

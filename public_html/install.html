@@ -215,7 +215,7 @@ echo "ed25519:YOUR_PUBLIC_KEY_HEX" > trusted_keys.txt</div>
             <span class="install-step-num">07</span>
             <div>
               <h3>Run the test suite</h3>
-              <p>Verifies signing, tamper detection, path traversal rejection, and the full round-trip. All 29 tests should pass before you accept any external bundles.</p>
+              <p>Verifies signing, tamper detection, path traversal rejection, and the full round-trip. The suite should pass clean before you accept any external bundles.</p>
               <div class="cmd-block">python3 -m pytest test_bundle.py -v</div>
             </div>
           </div>
@@ -234,7 +234,7 @@ echo "ed25519:YOUR_PUBLIC_KEY_HEX" > trusted_keys.txt</div>
           </div>
           <div class="verify-item">
             <span class="verify-mark">✓</span>
-            <span>All 29 pytest tests pass — if any fail, the rename or install was incomplete</span>
+            <span>All pytest tests pass — if any fail, the install is incomplete</span>
           </div>
           <div class="verify-item">
             <span class="verify-mark">✓</span>

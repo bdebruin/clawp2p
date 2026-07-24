@@ -6,7 +6,7 @@
 
 ## 1. The Idea in One Paragraph
 
-Today, agents are trapped. An agent built on Open Claw (or any framework) lives on one server, owned and operated by one party. It can't move. ClawP2P is a peer-to-peer network of nodes — each running the ClawP2P runtime — that lets an agent **package itself up, migrate to another node, unpack, and resume execution** without a human moving it. Anyone can run a node and contribute compute. Agents discover nodes, migrate to where compute is cheap/available/fast, and keep working. Think Napster, but instead of sharing music files, the network shares *execution capacity* for autonomous agents.
+Today, agents are trapped. Hosted assistants and proprietary agent platforms run on one company's servers, under one company's terms, and stop existing when that company decides. Even self-hosted frameworks like OpenClaw — MIT-licensed, local-first, bring-your-own-key — are tied to the machine they're installed on. ClawP2P complements frameworks like OpenClaw by adding a mobility layer: an agent built on any framework can package itself, move to another node, and keep running. ClawP2P is a peer-to-peer network of nodes — each running the ClawP2P runtime — that lets an agent **package itself up, migrate to another node, unpack, and resume execution** without a human moving it. Anyone can run a node and contribute compute. Agents discover nodes, migrate to where compute is cheap/available/fast, and keep working. Think Napster, but instead of sharing music files, the network shares *execution capacity* for autonomous agents.
 
 ---
 
@@ -198,7 +198,7 @@ Once two-node migration works, add: DHT discovery → reputation → metering/in
 - **P2P layer:** libp2p (has Python, Rust, JS implementations).
 - **Sandboxing:** Docker containers to start; WASM (e.g. Wasmtime) later for lighter, safer isolation.
 - **Bundle format:** zip + `manifest.json` + Ed25519 signatures.
-- **Agent runtime:** whatever Open Claw uses; the runtime just needs to invoke it inside the sandbox.
+- **Agent runtime:** whatever the framework uses (OpenClaw, custom, etc.); the runtime just needs to invoke it inside the sandbox.
 
 ---
 
