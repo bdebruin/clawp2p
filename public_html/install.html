@@ -139,7 +139,8 @@
           <li><span class="prereq-check">✓</span><span class="prereq-name">Git</span><span class="prereq-ver">to clone the repo</span></li>
           <li><span class="prereq-check">✓</span><span class="prereq-name">pip</span><span class="prereq-ver">comes with Python</span></li>
         </ul>
-        <p style="font-size:0.85rem;color:var(--fog);margin-bottom:2rem;">There is no published base image on Docker Hub. The agent base image is built locally from <code>docker/</code> in the repo (step 05).</p>
+        <p style="font-size:0.85rem;color:var(--fog);margin-bottom:0.75rem;">There is no published base image on Docker Hub. The agent base image is built locally from <code>docker/</code> in the repo (step 05).</p>
+        <p style="font-size:0.85rem;color:var(--fog);margin-bottom:2rem;">The egress proxy for <code>permissions.network_egress</code> is not implemented. Only agents with an empty egress list (<code>"network_egress": []</code>) will run today. Agents declaring any egress target will fail to start.</p>
 
         <h2 style="margin-bottom: 1rem;">Steps</h2>
         <div class="steps-wrap">
