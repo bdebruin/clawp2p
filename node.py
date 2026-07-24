@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # Node configuration
 # --------------------------------------------------------------------------
 
-DATA_DIR = Path(os.environ.get("CLAWP2P_DATA_DIR", "/var/lib/clawp2p"))
+DATA_DIR = Path(os.environ.get("CLAWP2P_DATA_DIR", Path.home() / ".clawp2p"))
 KEYS_DIR = DATA_DIR / "keys"
 AGENTS_DIR = DATA_DIR / "agents"
 QUARANTINE_DIR = DATA_DIR / "quarantine"
