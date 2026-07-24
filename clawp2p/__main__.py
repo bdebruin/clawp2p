@@ -161,6 +161,20 @@ def cmd_agent(args) -> None:
         print(f"Error: {out} already exists — pick a different --out path", file=sys.stderr)
         sys.exit(1)
 
+    # Load owner pubkey from the node keypair if it exists, so the manifest
+    # is packable immediately without manual editing.
+    data_dir = _data_dir()
+    key_path = data_dir / "keys" / "node.pem"
+    owner_pubkey = "REPLACE_WITH_YOUR_PUBLIC_KEY"
+    if key_path.is_file():
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from signing import load_private_key
+            kp = load_private_key(key_path)
+            owner_pubkey = kp.public_id
+        except Exception:
+            pass  # leave placeholder if key can't be loaded
+
     (out / "state").mkdir(parents=True)
     (out / "instructions").mkdir()
     (out / "code").mkdir()
@@ -190,7 +204,7 @@ def cmd_agent(args) -> None:
             "name": name,
             "version": "0.1.0",
             "created_at": _now(),
-            "owner_pubkey": "REPLACE_WITH_YOUR_PUBLIC_KEY"
+            "owner_pubkey": owner_pubkey
         },
         "runtime": {
             "entrypoint": "code/main.py",
@@ -221,10 +235,12 @@ def cmd_agent(args) -> None:
 
     print(f"Agent scaffolded: {out}/")
     print()
-    print("Before packing, edit manifest.json and set agent.owner_pubkey to your")
-    print("owner public key (the key you will sign with). Then:")
-    print()
-    print(f"  python3 -m clawp2p pack --agent {out} --key <your-key.pem> --out {name}.claw")
+    if owner_pubkey == "REPLACE_WITH_YOUR_PUBLIC_KEY":
+        print("Note: owner_pubkey not set — run `python3 -m clawp2p init` first, then re-scaffold.")
+        print(f"Or edit {out}/manifest.json and set agent.owner_pubkey manually.")
+        print()
+    print(f"Pack with:")
+    print(f"  python3 -m clawp2p pack --agent {out} --key ~/.clawp2p/keys/node.pem --out {name}.claw")
 
 
 def _short_id() -> str:
