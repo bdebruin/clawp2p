@@ -303,18 +303,25 @@
               <p>HTTP API (POST /bundle, GET /status, /policy, /agents). Docker sandbox: verify-before-execute, read-only code mount, writable state only. Bundle transfer with retry and exponential backoff.</p>
             </div>
           </div>
+          <div class="roadmap-item done">
+            <span class="roadmap-marker done-marker">✓</span>
+            <div>
+              <strong>Two-node migration + demo agent</strong>
+              <p>Verified July 23, 2026: counter agent started on MacBook (hop 0, steps 1–5), transferred over the internet to a DigitalOcean droplet (hop 1, steps 6–20). State preserved across the hop. exit_code: 0.</p>
+            </div>
+          </div>
           <div class="roadmap-item active">
             <span class="roadmap-marker">▶</span>
             <div>
-              <strong>Two-node migration + demo agent</strong>
-              <p>Node A checkpoints, transfers to hardcoded Node B, Node B verifies and resumes. Demo agent counts, logs its hostname, hops every 5 steps.</p>
+              <strong>DHT discovery</strong>
+              <p>Replace hardcoded <code>allowed_peers</code> with a distributed hash table. Nodes gossip about who’s online and what they offer.</p>
             </div>
           </div>
           <div class="roadmap-item">
             <span class="roadmap-marker">○</span>
             <div>
-              <strong>DHT discovery</strong>
-              <p>Replace hardcoded addresses with a distributed hash table. Nodes gossip about who's online and what they offer.</p>
+              <strong>Reputation and metering</strong>
+              <p>Nodes and agents build verifiable reputation over time. Usage tracked per hop; credits settle balances.</p>
             </div>
           </div>
         </div>
