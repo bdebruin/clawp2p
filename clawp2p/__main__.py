@@ -178,7 +178,7 @@ def cmd_agent(args) -> None:
 
     # The demo agent entrypoint
     (out / "code" / "main.py").write_text(
-        _DEMO_AGENT_CODE.format(name=name)
+        _DEMO_AGENT_CODE.replace('{AGENT_NAME}', name)
     )
 
     # Manifest placeholder — owner_pubkey must be filled in by pack
@@ -238,7 +238,7 @@ def _now() -> str:
 
 _DEMO_AGENT_CODE = '''\
 """
-{name} — demo counter agent for ClawP2P.
+{AGENT_NAME} — demo counter agent for ClawP2P.
 
 Counts to 20, logging its hop number and node id on each step.
 Writes incremented state to state/memory.md.

@@ -139,6 +139,7 @@
           <li><span class="prereq-check">✓</span><span class="prereq-name">Git</span><span class="prereq-ver">to clone the repo</span></li>
           <li><span class="prereq-check">✓</span><span class="prereq-name">pip</span><span class="prereq-ver">comes with Python</span></li>
         </ul>
+        <p style="font-size:0.85rem;color:var(--fog);margin-bottom:2rem;">There is no published base image on Docker Hub. The agent base image is built locally from <code>docker/</code> in the repo (step 05).</p>
 
         <h2 style="margin-bottom: 1rem;">Steps</h2>
         <div class="steps-wrap">
@@ -164,17 +165,11 @@ cd clawp2p</div>
           <div class="install-step">
             <span class="install-step-num">03</span>
             <div>
-              <h3>Generate your node keypair</h3>
-              <p>Each node has an Ed25519 identity. Agents use your public key to verify that bundles you forward haven't been tampered with.</p>
-              <div class="cmd-block">python3 -c "
-from signing import generate_keypair, save_private_key
-from pathlib import Path
-Path('keys').mkdir(exist_ok=True)
-kp = generate_keypair()
-save_private_key(kp, Path('keys/node.pem'))
-print('Public key:', kp.public_id)
-"</div>
-              <p>Save the printed public key — you'll add it to your <code>trusted_keys.txt</code> if you want to run test agents signed by yourself.</p>
+              <h3>Bootstrap the node</h3>
+              <p>Creates the data directory, generates your node keypair in the location the node reads, and writes starter config files. Idempotent — safe to re-run.</p>
+              <div class="cmd-block">python3 -m clawp2p init</div>
+              <p>The node public key is printed on completion. Note it — you’ll add it to <code>trusted_keys.txt</code> in step 04 if you want to run your own agents.</p>
+              <p>By default, data goes to <code>~/.clawp2p/</code>. Override with <code>CLAWP2P_DATA_DIR=/your/path python3 -m clawp2p init</code>.</p>
             </div>
           </div>
 
@@ -182,9 +177,9 @@ print('Public key:', kp.public_id)
             <span class="install-step-num">04</span>
             <div>
               <h3>Add trusted signing keys</h3>
-              <p>Your node only runs agents signed by keys you've explicitly trusted. Create <code>trusted_keys.txt</code> with one <code>ed25519:&lt;hex&gt;</code> key per line.</p>
-              <div class="cmd-block"><span class="cmd-comment"># Add your own public key (from step 03) to trust your own agents</span>
-echo "ed25519:YOUR_PUBLIC_KEY_HEX" > trusted_keys.txt</div>
+              <p>Your node only runs agents signed by keys you’ve explicitly trusted. Edit <code>~/.clawp2p/trusted_keys.txt</code> and add one <code>ed25519:&lt;hex&gt;</code> key per line.</p>
+              <div class="cmd-block"><span class="cmd-comment"># Add your own node public key (printed in step 03) to trust your own agents</span>
+echo "ed25519:YOUR_PUBLIC_KEY_HEX" >> ~/.clawp2p/trusted_keys.txt</div>
               <p>Blank lines and lines starting with <code>#</code> are ignored. There is no trust-on-first-use — every key is an explicit decision.</p>
             </div>
           </div>
@@ -192,11 +187,10 @@ echo "ed25519:YOUR_PUBLIC_KEY_HEX" > trusted_keys.txt</div>
           <div class="install-step">
             <span class="install-step-num">05</span>
             <div>
-              <h3>Pull the agent base image</h3>
-              <p>Agents run inside a Docker container. The base image is a minimal Python 3.11 environment with no extra capabilities.</p>
-              <div class="cmd-block">docker pull clawp2p/agent-base:0.1</div>
-              <p>If the image isn't yet published, build it locally from the repo:</p>
-              <div class="cmd-block">docker build -t clawp2p/agent-base:0.1 docker/</div>
+              <h3>Build the agent base image</h3>
+              <p>Agents run inside a Docker container. Build the base image locally from the repo — it is a minimal Python 3.11 environment, non-root uid 1000, no extra packages.</p>
+              <div class="cmd-block">bash docker/build.sh</div>
+              <p>This builds and tags <code>clawp2p/agent-base:0.1</code> on your machine and verifies <code>python3.11</code> resolves inside it.</p>
             </div>
           </div>
 
@@ -204,10 +198,11 @@ echo "ed25519:YOUR_PUBLIC_KEY_HEX" > trusted_keys.txt</div>
             <span class="install-step-num">06</span>
             <div>
               <h3>Start the node</h3>
-              <p>The node daemon listens for incoming bundles on port 7777 by default. Set <code>CLAWP2P_PORT</code> to change it.</p>
+              <p>The node reads keys and config from the data directory set up in step 03. Run from the repo directory.</p>
               <div class="cmd-block">python3 node.py</div>
-              <p>Or with environment overrides:</p>
-              <div class="cmd-block">CLAWP2P_PORT=7777 CLAWP2P_NODE_ID=my-node python3 node.py</div>
+              <p>Or with overrides:</p>
+              <div class="cmd-block">CLAWP2P_DATA_DIR=~/.clawp2p CLAWP2P_PORT=7777 CLAWP2P_NODE_ID=my-node python3 node.py</div>
+              <p>The node logs its public key and the number of trusted keys on startup. If it logs <em>"no trusted_keys.txt found — node will reject all bundles"</em>, step 04 is incomplete.</p>
             </div>
           </div>
 
@@ -226,19 +221,19 @@ echo "ed25519:YOUR_PUBLIC_KEY_HEX" > trusted_keys.txt</div>
           <h3>How to verify a working node</h3>
           <div class="verify-item">
             <span class="verify-mark">✓</span>
-            <span>Node responds at <code>http://localhost:7777/status</code> — returns JSON with <code>node_id</code>, uptime, and public key</span>
+            <span><code>curl http://localhost:7777/status</code> — returns JSON with <code>node_id</code>, uptime, and public key matching what step 03 printed</span>
           </div>
           <div class="verify-item">
             <span class="verify-mark">✓</span>
-            <span><code>http://localhost:7777/policy</code> — returns your configured resource ceilings and egress allowlist</span>
+            <span><code>curl http://localhost:7777/policy</code> — returns resource ceilings and egress allowlist</span>
           </div>
           <div class="verify-item">
             <span class="verify-mark">✓</span>
-            <span>All pytest tests pass — if any fail, the install is incomplete</span>
+            <span><code>python3 -m pytest test_bundle.py -v</code> passes clean</span>
           </div>
           <div class="verify-item">
             <span class="verify-mark">✓</span>
-            <span><code>POST http://localhost:7777/bundle</code> with a valid <code>.claw</code> file returns <code>202 Accepted</code></span>
+            <span><code>curl -X POST http://localhost:7777/bundle --data-binary @demo_agent.claw -H 'Content-Type: application/octet-stream'</code> returns <code>202</code> — see README for how to pack the demo agent</span>
           </div>
         </div>
 
