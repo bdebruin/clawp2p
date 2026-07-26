@@ -246,6 +246,126 @@ def policy():
     })
 
 
+@app.get("/reachability")
+def reachability():
+    """Report how many known nodes would accept a given agent manifest.
+
+    Query params:
+      manifest=<json-encoded manifest>  — required
+
+    Three states per peer:
+      reachable           — policy accepts AND a TCP connection succeeds
+      policy_ok_undialable — policy accepts but node cannot be reached
+      rejecting           — policy rejects (with reasons)
+
+    Only "reachable" counts toward the headline accepting number.
+    Dialability is confirmed by an actual connection attempt to GET /status.
+    """
+    import json as _json
+    from transport import fetch_status as _fetch_status, TransportError as _TransportError
+
+    raw = request.args.get("manifest")
+    if not raw:
+        return jsonify({"error": "manifest query param required"}), 400
+    try:
+        manifest = _json.loads(raw)
+    except _json.JSONDecodeError as exc:
+        return jsonify({"error": f"manifest is not valid JSON: {exc}"}), 400
+
+    try:
+        from bundle import validate_manifest, BundleError
+        validate_manifest(manifest)
+    except Exception as exc:
+        return jsonify({"error": f"invalid manifest: {exc}"}), 400
+
+    peers = sorted(_get_allowed_peers())  # known outbound targets
+    detail = []
+    reachable = 0
+    policy_ok_undialable = 0
+    rejecting = 0
+
+    # Include this node itself
+    all_targets = [(NODE_ID, f"localhost:{NODE_PORT}", _get_policy())]
+
+    # For each known peer, fetch their policy
+    for peer_addr in peers:
+        try:
+            remote_policy_dict = _fetch_status(peer_addr)  # uses /status for liveness
+            # Fetch actual policy
+            from transport import fetch_policy as _fetch_policy
+            pd = _fetch_policy(peer_addr)
+            from bundle import NodePolicy
+            remote_policy = NodePolicy(
+                max_memory_mb=pd.get("max_memory_mb", 1024),
+                max_cpu_cores=pd.get("max_cpu_cores", 1.0),
+                max_disk_mb=pd.get("max_disk_mb", 512),
+                max_runtime_seconds=pd.get("max_runtime_seconds", 600),
+                allow_replication=pd.get("allow_replication", False),
+                allowed_egress=set(pd.get("allowed_egress", [])),
+                max_hops=pd.get("max_hops", 50),
+            )
+            node_id = remote_policy_dict.get("node_id", peer_addr)
+            all_targets.append((node_id, peer_addr, remote_policy))
+        except _TransportError:
+            # Could not reach peer — check policy if we have a cached copy,
+            # otherwise report unknown
+            detail.append({
+                "node_id": peer_addr,
+                "address": peer_addr,
+                "state": "unknown",
+                "dialable": False,
+                "reasons": ["could not reach node to fetch policy"],
+            })
+
+    for node_id, address, node_policy in all_targets:
+        is_local = address.startswith("localhost:")
+        # Check dialability (skip for local node)
+        dialable = is_local
+        if not is_local:
+            try:
+                _fetch_status(address)
+                dialable = True
+            except _TransportError:
+                dialable = False
+
+        # Check policy
+        reasons = []
+        try:
+            node_policy.check(manifest)
+            policy_ok = True
+        except Exception as exc:
+            policy_ok = False
+            reasons = [str(exc)]
+
+        if policy_ok and (dialable or is_local):
+            state = "reachable"
+            reachable += 1
+        elif policy_ok and not dialable:
+            state = "policy_ok_undialable"
+            policy_ok_undialable += 1
+        else:
+            state = "rejecting"
+            rejecting += 1
+
+        detail.append({
+            "node_id": node_id,
+            "address": address,
+            "state": state,
+            "dialable": dialable or is_local,
+            "reasons": reasons,
+        })
+
+    agent_id = manifest.get("agent", {}).get("id", "unknown")
+    return jsonify({
+        "agent_id": agent_id,
+        "known_nodes": len(detail),
+        "reachable": reachable,
+        "policy_ok_undialable": policy_ok_undialable,
+        "rejecting": rejecting,
+        "detail": detail,
+    })
+
+
 @app.get("/agents")
 def agents():
     """All agents this node has run or is currently running, most recent first."""

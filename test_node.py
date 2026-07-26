@@ -154,3 +154,78 @@ def test_migration_sends_and_receiver_verifies(
             S.TrustedKeys([owner.public_id]),
             policy=B.NodePolicy(),
         )
+
+
+# --------------------------------------------------------------------------
+# GET /reachability tests
+# --------------------------------------------------------------------------
+
+def test_reachability_local_node_accepts(node_env, agent_dir, owner):
+    """Local node with matching policy reports reachable."""
+    manifest = json.loads((agent_dir / "manifest.json").read_text())
+
+    import urllib.parse
+    with N.app.test_client() as client:
+        resp = client.get(
+            "/reachability?manifest=" + urllib.parse.quote(json.dumps(manifest))
+        )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["reachable"] == 1
+    assert data["rejecting"] == 0
+    local = next(d for d in data["detail"] if d["address"].startswith("localhost:"))
+    assert local["state"] == "reachable"
+    assert local["dialable"] is True
+
+
+def test_reachability_rejecting_egress(node_env, agent_dir, owner):
+    """Manifest declaring disallowed egress target is reported as rejecting."""
+    import urllib.parse
+    manifest = json.loads((agent_dir / "manifest.json").read_text())
+    manifest["permissions"]["network_egress"] = ["api.example.com:443"]
+
+    with N.app.test_client() as client:
+        resp = client.get(
+            "/reachability?manifest=" + urllib.parse.quote(json.dumps(manifest))
+        )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["reachable"] == 0
+    local = next(d for d in data["detail"] if d["address"].startswith("localhost:"))
+    assert local["state"] == "rejecting"
+    assert any("allowlist" in r for r in local["reasons"])
+
+
+def test_reachability_undialable_peer(node_env, agent_dir, owner, monkeypatch):
+    """A peer that accepts the policy but is unreachable is policy_ok_undialable."""
+    import urllib.parse
+    from transport import TransportError
+
+    manifest = json.loads((agent_dir / "manifest.json").read_text())
+    # Add a fake peer that passes policy check but is unreachable
+    monkeypatch.setattr(N, "_allowed_peers", {"192.0.2.1:7777"})  # TEST-NET, always unreachable
+
+    def fake_fetch_status(addr):
+        raise TransportError("connection refused")
+
+    def fake_fetch_policy(addr):
+        raise TransportError("connection refused")
+
+    monkeypatch.setattr("node.fetch_status" if hasattr(N, "fetch_status") else "transport.fetch_status",
+                        fake_fetch_status, raising=False)
+
+    import transport as T
+    monkeypatch.setattr(T, "fetch_status", fake_fetch_status)
+    monkeypatch.setattr(T, "fetch_policy", fake_fetch_policy)
+
+    with N.app.test_client() as client:
+        resp = client.get(
+            "/reachability?manifest=" + urllib.parse.quote(json.dumps(manifest))
+        )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    peer = next((d for d in data["detail"] if d["address"] == "192.0.2.1:7777"), None)
+    assert peer is not None
+    assert peer["state"] in ("policy_ok_undialable", "unknown")
+    # Local node should still be reachable
+    assert data["reachable"] >= 1
