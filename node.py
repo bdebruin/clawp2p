@@ -348,16 +348,21 @@ def receive_bundle():
         claw_path.unlink(missing_ok=True)
 
     # Verification passed.
-    # Fix ownership: state/ and history.log must be writable by the container
-    # user (uid 1000). The node runs as root, bundle files land as root-owned.
-    try:
-        import subprocess as _sp
-        _sp.run(["chown", "-R", "1000:1000",
-                 str(agent_dir / "state"),
-                 str(agent_dir / "history.log")],
-                check=True)
-    except Exception as _e:
-        logger.warning("chown failed (non-fatal on non-Linux): %s", _e)
+    # On Linux root nodes: state/ lands as root-owned after unpack. sandbox.py
+    # detects this and falls back to CONTAINER_USER_FALLBACK (1000:1000), so
+    # the node must ensure state/ is writable by that uid. We do a targeted
+    # chown only on Linux where os.getuid() == 0.
+    # On macOS non-root nodes: state/ is owned by the node process uid.
+    # sandbox.py passes that uid as --user, so no chown needed.
+    if os.getuid() == 0:
+        try:
+            import subprocess as _sp
+            _sp.run(["chown", "-R", "1000:1000",
+                     str(agent_dir / "state"),
+                     str(agent_dir / "history.log")],
+                    check=True)
+        except Exception as _e:
+            logger.warning("chown failed: %s", _e)
 
     # Run asynchronously so the HTTP connection doesn't hold open.
     run_rec = _register_run(

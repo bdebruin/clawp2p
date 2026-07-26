@@ -49,8 +49,10 @@ RUNTIME_MAX_RUNTIME_SECONDS = int(os.environ.get("CLAWP2P_MAX_RUNTIME_SECONDS", 
 RUNTIME_MAX_PIDS = int(os.environ.get("CLAWP2P_MAX_PIDS", "128"))
 
 # UID:GID the agent process runs as inside the container. The agent-base image
-# must contain this user, and bind-mounted state/ must be writable by it.
-CONTAINER_USER = os.environ.get("CLAWP2P_CONTAINER_USER", "1000:1000")
+# must contain this user. We set this to match the owner of the unpacked state/
+# directory so bind-mounted files are always writable without chown.
+# See: _container_user(agent_dir) below.
+CONTAINER_USER_FALLBACK = os.environ.get("CLAWP2P_CONTAINER_USER", "1000:1000")
 
 # Seconds of grace beyond the manifest runtime limit before we force-kill the
 # container. Covers docker startup overhead so a well-behaved agent that used
@@ -133,6 +135,32 @@ def _check_consistency(agent_dir_manifest: dict, caller_manifest: dict) -> None:
             )
 
 
+def _container_user(agent_dir: Path) -> str:
+    """Return uid:gid matching the owner of agent_dir/state.
+
+    Running the container as the same uid that owns the bind-mounted state/
+    ensures write access without chown. On a root Linux node, the unpacked
+    dir is root-owned (0:0) which is fine — Docker runs as root inside the
+    container by default, and the agent-base image has uid 1000 as a
+    non-root user. In that case we fall back to CONTAINER_USER_FALLBACK
+    (1000:1000) so the node must ensure writable ownership separately.
+
+    On a non-root macOS node, the dir is owned by the node process's own
+    uid (e.g. 501). Passing that as --user lets the container write to
+    bind-mounted paths without needing chown at all.
+    """
+    try:
+        st = (agent_dir / "state").stat()
+        uid, gid = st.st_uid, st.st_gid
+        if uid == 0:
+            # Root-owned: fall back to declared container user.
+            # The node.py caller must have already chowned state/ on Linux.
+            return CONTAINER_USER_FALLBACK
+        return f"{uid}:{gid}"
+    except Exception:
+        return CONTAINER_USER_FALLBACK
+
+
 def _build_docker_cmd(
     agent_dir: Path,
     manifest: dict,
@@ -188,7 +216,7 @@ def _build_docker_cmd(
         f"--cpus={cpu}",
         f"--pids-limit={RUNTIME_MAX_PIDS}",
         # Security: non-root, drop all capabilities, no new privileges
-        f"--user={CONTAINER_USER}",
+        f"--user={_container_user(agent_dir)}",
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges:true",
         "--read-only",  # root FS read-only; writable mounts declared below
